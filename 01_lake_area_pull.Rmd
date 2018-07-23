@@ -1,0 +1,146 @@
+---
+title: "Lake Area Pulls"
+author: "Simon Topp"
+date: "7/23/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(reticulate)
+library(googledrive)
+```
+
+## TOA Lake Area Pull
+
+```{r}
+#Set .RProfile to set the default python for reticulate
+Sys.setenv(RETICULATE_PYTHON = '/usr/local/bin/python2')
+
+##repl_python basically starts a python bash window within your R chunk.  This can be used to actually interact with earth engine.
+repl_python()
+
+## Initialize EE
+ee.Initialize()
+
+#Source necessary functions.
+execfile('CitSciFuncs.py')
+
+l8 = ee.ImageCollection('LANDSAT/LC08/C01/T1_RT_TOA')
+l7 = ee.ImageCollection('LANDSAT/LE07/C01/T1_RT_TOA')
+l5 = ee.ImageCollection('LANDSAT/LT05/C01/T1_RT_TOA')
+
+#Identify collection for use in sourced functions.
+collection = 'TOA'
+
+#Standardize band names between the various collections and aggregate 
+#them into one image collection
+
+bn8 = ['B2','B3', 'B4', 'B5', 'B6','B7', 'B8', 'BQA']
+bn57 = ['B1', 'B2', 'B3', 'B4', 'B5','B7', 'B8', 'BQA']
+bns = ['Blue', 'Green', 'Red', 'Nir', 'Swir1', 'Swir2', 'Pan', 'qa']
+  
+ls5 = l5.select(bn57, bns)
+ls7 = l7.select(bn57, bns)
+ls8 = l8.select(bn8, bns)
+
+ls = ee.ImageCollection(ls5.merge(ls7).merge(ls8))
+
+#Script for Measuring and exporting Landsat Lake Areas
+
+table1 = ee.FeatureCollection('users/sntopp/Lakes_ply_20171106').map(getClosestTile)
+table2 = ee.FeatureCollection('users/sntopp/NCSC_Horsepen_Lake').map(getClosestTile)
+table = table1.merge(table2)
+lakeNum = int(table.size().getInfo())
+lakes = table.toList(lakeNum) 
+
+#currentDate = now.strftime("%Y-%m-%d")
+state = []
+status_task = 0
+
+
+for i in range(0,lakeNum):
+    task = []
+    
+    polygon = ee.Feature(lakes.get(i)).geometry()
+    
+    buff = polygon.buffer(2000)
+    
+    lakename = str(ee.Feature(lakes.get(i)).get('GNIS_NAME').getInfo())
+    
+    path = ee.Feature(lakes.get(i)).get('path').getInfo()
+    row = ee.Feature(lakes.get(i)).get('row').getInfo()
+    
+    
+    collectionL8RT = ee.ImageCollection('LANDSAT/LC08/C01/T1_RT_TOA')\
+    .filter(ee.Filter.eq('WRS_PATH', int(path)))\
+    .filter(ee.Filter.eq('WRS_ROW', int(row)))\
+    .filter(ee.Filter.date('2018-01-01', '2018-02-03'))\
+    .set({'Mission': 'L8RT'})
+    
+    collectionL8 = ee.ImageCollection('LANDSAT/LC8_SR')\
+    .filter(ee.Filter.eq('WRS_PATH', int(path)))\
+    .filter(ee.Filter.eq('WRS_ROW', int(row)))\
+    .set({'Mission': 'L8'})
+
+    collectionL7 = ee.ImageCollection('LANDSAT/LE7_SR')\
+    .filter(ee.Filter.eq('WRS_PATH', int(path)))\
+    .filter(ee.Filter.eq('WRS_ROW', int(row)))\
+    .filter(ee.Filter.date('1999-05-01', '2003-05-30'))\
+    .set({'Mission': 'L7'})
+
+    collectionL5 = ee.ImageCollection('LANDSAT/LT5_SR')\
+    .filter(ee.Filter.eq('WRS_PATH', int(path)))\
+    .filter(ee.Filter.eq('WRS_ROW', int(row)))\
+    .set({'Mission': 'L5'})
+   
+      
+    missions = list(['L8RT','L8','L7','L5'])
+    #missions = list(['L8','L7'])
+    
+    #Landsat clip, water mask, and lake area calculations
+    collection = [collectionL8RT, collectionL8, collectionL7, collectionL5]
+    #collection = [collectionL8, collectionL7] #Limited for testing
+                                
+    for x in range(1):                       
+        ls = collection[x].filter(ee.Filter.date('2017-12-18', '2019-01-01'))
+        LSClip = ls.map(clipImage)
+        if x == 0:
+            LSimageNoCloud = LSClip.map(cloudScore) #.filter(ee.Filter.lt('cScore', 20))
+            #LSimageNoCloud = LSimageNoCloud.filter(ee.Filter.lt('cScore', 5))
+        else:
+            LSimageNoCloud = LSClip.map(fmaskScore) #.filter(ee.Filter.lt('cScore' , 20))
+            #LSimageNoCloud = LSimageNoCloud.filter(ee.Filter.lt('cScore' , 10))
+    
+        otsu = LSimageNoCloud.map(thresh)
+        LSextent = otsu.map(waterExtentLS)     #Potentially try to save image here.  Python script that downloads URL as png and saves.  Google it.
+        
+        
+        if x==0:
+            LS_Output = ee.FeatureCollection(LSextent.map(LS_Selection))
+        else:
+            LS_Output = ee.FeatureCollection(LSextent.map(LS_SelectionSR))
+            
+        LSExport = ee.batch.Export.table.toDrive(collection = LS_Output, \
+                                               description = missions[x] + '_' + lakename, \
+                                               folder='UNC_LakeAreasLS_UpdateFeb3', fileFormat = 'csv')
+        task.append(LSExport)
+    
+        task[x].start()
+        state.append(task[x].status()['state']) 
+        while state in ['READY', 'RUNNING']:
+            print state + '...'
+            state = task.status()['state']
+        print 'Done'
+
+```
+
+## Including Plots
+
+
+```{r}
+
+```
+
