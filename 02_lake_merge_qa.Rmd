@@ -1,0 +1,164 @@
+---
+title: "02_lake_merge_QA"
+author: "Simon Topp"
+date: "7/26/2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(googledrive)
+```
+
+## Download Lake Area Tables
+
+```{r cars}
+
+#Landsat
+path <- 'UNC_LakeAreasLS'
+desitnation <- 'areas/ls/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+#Sentinel2
+path <- 'UNC_LakeAreasS2'
+desitnation <- 'areas/s2/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+
+#Sentinel2
+path <- 'UNC_LakeAreasS2_clouds2'
+desitnation <- 'areas/s2_clouds2/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+```
+
+## Merge Files and Compare to Old Data
+
+```{r pressure, echo=FALSE}
+
+#Bring in old Data to Compare
+old <- read.csv('areas/NCSC_Full20180205.csv')  %>%
+    mutate(Date = as.Date(Date))
+
+#Read in new files and merge into one dataframe
+ls <- list.files('areas/ls', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 'LS')
+
+s2 <- list.files('areas/s2', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 's2')
+
+s2.2 <- list.files('areas/s2_clouds2', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 's2.2')
+        
+areas <- ls %>%
+  bind_rows(s2)%>%
+  bind_rows(s2.2)%>%
+  select(-.geo) %>%
+  mutate(Date = as.Date(Date),
+               AreaKm = round(Area/1000000, digits = 4)) %>%
+  rename(lakeName = GNIS_NAME, NHD_Area = AREASQKM)
+
+## Visualize
+ggplot(areas, aes(x = AreaKm, color = sat)) + geom_histogram(bins = 8) + facet_wrap(~lakeName, scales = 'free')
+
+ggplot(areas, aes(x = Date, y = AreaKm, color = sat)) + 
+        geom_line() + 
+        facet_grid(lakeName ~., scales = 'free')
+
+
+write.csv(areas, 'areas/full.preQA.20180801.csv')
+
+areas.new <- areas %>%
+        filter(Date > '2017-03-23',
+               Date < '2018-02-01')
+
+## Summary
+new.sum <- areas.new %>%
+  group_by(lakeName, sat) %>%
+  summarize(count = n())
+    
+    # mean.a = mean(AreaKm),
+    #         std.a = sd(AreaKm),
+    #         NHD=median(NHD_Area),
+    #         median.a=median(AreaKm),
+    #         count.a = n())
+
+checkls <- areas.new %>%
+  filter(sat == 'LS') %>%
+        group_by(lakeName) %>%
+        summarize(count = n()) %>%
+        left_join(old %>% 
+                    filter(Mission == 'L8RT') %>% group_by(lakeName) %>% summarize(count.old = n()))
+        
+checkS2 <- areas.new %>%
+  filter(sat == 's2.2') %>%
+        group_by(lakeName, sat) %>%
+        summarize(count = n()) %>%
+        left_join(old %>% 
+                    filter(Mission == 'S2') %>% group_by(lakeName) %>% summarize(count.old = n()))
+       
+
+## Visualize
+ggplot(areas, aes(x = AreaKm)) + geom_histogram(bins = 8) + facet_wrap(~lakeName, scales = 'free')
+
+olds2 <- old %>% filter(Mission == 'S2')
+ggplot(areas.new %>% filter(sat == 's2.2'), aes(x = Date, y = AreaKm)) + 
+        geom_line(aes(color = sat)) + 
+        geom_line(data = olds2, aes(color = Mission)) +
+        facet_grid(lakeName ~., scales = 'free')
+
+# Old Data
+lsold = readRDS('C:/Users/sntopp/OneDrive - University of North Carolina at Chapel Hill/Citizen Science/data/SRS2_20171130.RData')
+s2Old = read.table('/Users/simontopp/OneDrive - University of North Carolina at Chapel Hill/Citizen Science/data/SRS2_20171130.csv', header = TRUE)
+          #header = TRUE)
+
+#Combine landsat and Sentinel Data
+dfL = rbind(dfLS,dfS)
+
+# Old Landsat Summary
+oldls.sum.summary <- lsold %>%
+  group_by(lakeName) %>%
+  summarize(mean.a = mean(AreaKm),
+            std.a = sd(AreaKm),
+            NHD=median(NHD_Area),
+            median.a=median(AreaKm),
+            count.a = n())
+
+
+```
+
+```{r}
+check <- areas %>% filter(lakeName == 'Great Lake',
+                          Date > '2017-01-01')
+
+check <- areas %>% filter(lakeName == 'Lake Waccamaw',
+                          sat == 'S2')
+```
+
