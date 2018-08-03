@@ -165,7 +165,7 @@ def shadowMask(img,cloudMaskType):
 
 # Clip image to Lake
 def clipImage(image):
-  geoclip = ee.Geometry(image.geometry()).buffer(-5000)
+  geoclip = ee.Geometry(image.geometry()).buffer(-1000)
   clip = image.clip(geoclip)
   return clip
 
@@ -186,10 +186,6 @@ def filterToNonEmpty1(images, region, scale):
 
 def lakeClip(image):
   return image.clip(buff)
-
-def reproject(image):
-    S230m = image.reduceResolution(ee.Reducer.mean()).reproject( 'EPSG:32628', None, 30)
-    return S230m.copyProperties(image).set({"system:time_start": image.get("system:time_start")})
 
 ####All in MNDWI - Green and Mid Infrared#####
 
@@ -232,6 +228,13 @@ def thresh(image):
 
 def waterExtentLS(image):
     threshold = ee.Number(image.get('threshold'))
+    #####For use with constanct threshold
+    # if series == 'S2':
+    #   ndwi = image.normalizedDifference(['Green','Swir1']).rename('ndwi')
+    #   ndwi = ndwi.reproject(ndwi.projection().scale(3,3))
+    # else:
+    #   ndwi = image.normalizedDifference(['Green','Swir1']).rename('ndwi')
+    #water = ndwi.select('ndwi').gt(0.1)
     water = image.select("ndwi").gt(threshold)
     if lakename == 'Lake Mattamuskeet W' or 'Lake Mattamuskeet E':
         road = ee.FeatureCollection("TIGER/2016/Roads").filter(ee.Filter.eq('fullname', 'Frying Pan Lndg')).geometry().buffer(60)
@@ -248,13 +251,26 @@ def waterExtentLS(image):
     areaSum = area.reduceRegion(ee.Reducer.sum(),polygon.buffer(2000), 30) #need to use same resolution as input (30 landsat)
     return image.set({"Area": areaSum.get("cumulative_cost")})
 
+
 def out(image):
+  if series == 'TOA':
     CleanLS = ee.Feature(lakes.get(i))
     return CleanLS.set({'Date':ee.Date(image.get('system:time_start'))})\
     .set({"Area":ee.Number(image.get("Area"))})\
     .set({'cScore':ee.Number(image.get('cScore'))})\
     .set({'CloudCover':image.get('CLOUD_COVER')})\
-    .set({'ID': image.get('system:index')})
+    .set({'ID': image.get('system:index')})\
+    .set({'path': image.get('WRS_PATH')})\
+    .set({'row':image.get('WRS_ROW')})
+  if series == 'S2':
+    CleanLS = ee.Feature(lakes.get(i))
+    return CleanLS.set({'Date':ee.Date(image.get('system:time_start'))})\
+    .set({"Area":ee.Number(image.get("Area"))})\
+    .set({'cScore':ee.Number(image.get('cScore'))})\
+    .set({'CloudCover':image.get('CLOUD_COVER')})\
+    .set({'ID': image.get('system:index')})\
+    .set({'path': image.get('MGRS_TILE')})\
+    .set({'row':'null'})
 
         
 #Extracts path and row to filter feature collection and limit edge effects.

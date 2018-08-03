@@ -99,14 +99,15 @@ for i in range(0,lakeNum):
     
   otsu = LSimageNoCloud.map(thresh)
   LSextent = otsu.map(waterExtentLS)
+  #LSextent = LSimageNoCloud.map(waterExtentLS)
         
   output = ee.FeatureCollection(LSextent.map(out))
         
   LSExport = ee.batch.Export.table.toDrive(collection = output, \
                                           description = lakename, \
-                                          folder='UNC_LakeAreasLSwEdge',\
+                                          folder='UNC_LakeAreasLS',\
                                           fileFormat = 'csv')
-  maximum_no_of_tasks(20, 30)
+  #maximum_no_of_tasks(20, 30)
   #Send next task.
   LSExport.start()
   print('Done')
@@ -178,17 +179,16 @@ for i in range(0,lakeNum):
   LSimageNoCloud = LSClip.map(lsCloudFilter).filter(ee.Filter.lt('cScore', 20))
   
   LSimageNoCloud = LSimageNoCloud.map(sentinelCloudScore).filter(ee.Filter.lt('cScoreII', 20))
-  
-  #LSimageNoCloud = LSimageNoCloud.map(reproject)
     
   otsu = LSimageNoCloud.map(thresh)
   LSextent = otsu.map(waterExtentLS)
+  #LSextent = LSimageNoCloud.map(waterExtentLS)
         
   output = ee.FeatureCollection(LSextent.map(out))
         
   LSExport = ee.batch.Export.table.toDrive(collection = output, \
                                           description = lakename, \
-                                          folder='UNC_LakeAreasS2_clouds2',\
+                                          folder='UNC_LakeAreasS2_cThresh',\
                                           fileFormat = 'csv')
   maximum_no_of_tasks(20, 30)
   #Send next task.

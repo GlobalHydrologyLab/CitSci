@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(googledrive)
+library(scales)
 ```
 
 ## Download Lake Area Tables
@@ -41,7 +42,7 @@ for (i in 1:length(files$name)){
 }
 
 
-#Sentinel2
+#Sentinel2.double cloud filt (much better)
 path <- 'UNC_LakeAreasS2_clouds2'
 desitnation <- 'areas/s2_clouds2/'
 files <- drive_ls(path)
@@ -51,6 +52,44 @@ for (i in 1:length(files$name)){
         drive_download(paste0(path,'/',name), paste0(desitnation,name),
                        overwrite = T)
 }
+
+#Sentinel 2 10meter res
+
+path <- 'UNC_LakeAreasS2_10m'
+desitnation <- 'areas/s2_10m/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+#Sentinel 2 30 meter 0.1 threshold
+
+path <- 'UNC_LakeAreasS2_cThresh'
+desitnation <- 'areas/s2_cThresh/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+#Landsat 0.1 threshold
+
+path <- 'UNC_LakeAreasLS_cThresh'
+desitnation <- 'areas/LS_cThresh/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+
 ```
 
 ## Merge Files and Compare to Old Data
@@ -76,28 +115,58 @@ s2.2 <- list.files('areas/s2_clouds2', full.names = T) %>%
         map(read_csv) %>%
         reduce(rbind) %>%
   mutate(sat = 's2.2')
+
+s2.10m <- list.files('areas/s2_10m', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 's2.10m')
+
+s2.ct <- list.files('areas/s2_cThresh', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 's2.ct')
+
+ls.ct <- list.files('areas/ls_cThresh', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 'ls.ct')
         
 areas <- ls %>%
-  bind_rows(s2)%>%
+  #bind_rows(s2)%>%
   bind_rows(s2.2)%>%
+  bind_rows(s2.10m) %>%
+  bind_rows(ls.ct) %>%
+  bind_rows(s2.ct) %>%
   select(-.geo) %>%
   mutate(Date = as.Date(Date),
-               AreaKm = round(Area/1000000, digits = 4)) %>%
+         AreaKm = round(Area/1000000, digits = 4),
+         ID = paste0(GNIS_NAME,'_',Date)) %>%
   rename(lakeName = GNIS_NAME, NHD_Area = AREASQKM)
 
-## Visualize
-ggplot(areas, aes(x = AreaKm, color = sat)) + geom_histogram(bins = 8) + facet_wrap(~lakeName, scales = 'free')
+## Remove values from visual qa check
+vis.qa <- read.csv('qa_remove_list.csv') %>%
+  mutate(ID = paste0(lakeName,'_',Date)) #%>%
+  filter(Reason != 'sheen')
 
-ggplot(areas, aes(x = Date, y = AreaKm, color = sat)) + 
+areas <- areas %>% 
+  filter(!(ID %in% vis.qa$ID))
+
+check <- vis.qa %>%
+  filter(!(ID %in% areas$ID))
+## Visualize
+ggplot(areas %>% filter(Date > '2017-03-24'), aes(x = AreaKm, color = sat)) + geom_histogram(bins = 8) + facet_wrap(~lakeName, scales = 'free')
+
+ggplot(areas %>% filter(Date > '2017-03-24'), aes(x = Date, y = AreaKm, color = sat)) + 
         geom_line() + 
-        facet_grid(lakeName ~., scales = 'free')
+        facet_grid(lakeName ~., scales = 'free') +
+  scale_x_date(breaks = pretty_breaks(n = 20))
 
 
 write.csv(areas, 'areas/full.preQA.20180801.csv')
 
 areas.new <- areas %>%
         filter(Date > '2017-03-23',
-               Date < '2018-02-01')
+               Date < '2019-01-01')
 
 ## Summary
 new.sum <- areas.new %>%
