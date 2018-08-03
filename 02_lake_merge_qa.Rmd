@@ -41,6 +41,13 @@ for (i in 1:length(files$name)){
                        overwrite = T)
 }
 
+```
+
+
+## Download scripts for various checks (i.e. 10 meter resolution Sentinel 2, different ndwi thresholds)
+
+```{r}
+
 
 #Sentinel2.double cloud filt (much better)
 path <- 'UNC_LakeAreasS2_clouds2'
@@ -90,27 +97,6 @@ for (i in 1:length(files$name)){
 }
 
 
-```
-
-## Merge Files and Compare to Old Data
-
-```{r pressure, echo=FALSE}
-
-#Bring in old Data to Compare
-old <- read.csv('areas/NCSC_Full20180205.csv')  %>%
-    mutate(Date = as.Date(Date))
-
-#Read in new files and merge into one dataframe
-ls <- list.files('areas/ls', full.names = T) %>%
-        map(read_csv) %>%
-        reduce(rbind) %>%
-  mutate(sat = 'LS')
-
-s2 <- list.files('areas/s2', full.names = T) %>%
-        map(read_csv) %>%
-        reduce(rbind) %>%
-  mutate(sat = 's2')
-
 s2.2 <- list.files('areas/s2_clouds2', full.names = T) %>%
         map(read_csv) %>%
         reduce(rbind) %>%
@@ -130,104 +116,127 @@ ls.ct <- list.files('areas/ls_cThresh', full.names = T) %>%
         map(read_csv) %>%
         reduce(rbind) %>%
   mutate(sat = 'ls.ct')
-        
-areas <- ls %>%
-  #bind_rows(s2)%>%
-  bind_rows(s2.2)%>%
-  bind_rows(s2.10m) %>%
-  bind_rows(ls.ct) %>%
-  bind_rows(s2.ct) %>%
-  select(-.geo) %>%
-  mutate(Date = as.Date(Date),
-         AreaKm = round(Area/1000000, digits = 4),
-         ID = paste0(GNIS_NAME,'_',Date)) %>%
-  rename(lakeName = GNIS_NAME, NHD_Area = AREASQKM)
-
-## Remove values from visual qa check
-vis.qa <- read.csv('qa_remove_list.csv') %>%
-  mutate(ID = paste0(lakeName,'_',Date)) #%>%
-  filter(Reason != 'sheen')
-
-areas <- areas %>% 
-  filter(!(ID %in% vis.qa$ID))
-
-check <- vis.qa %>%
-  filter(!(ID %in% areas$ID))
-## Visualize
-ggplot(areas %>% filter(Date > '2017-03-24'), aes(x = AreaKm, color = sat)) + geom_histogram(bins = 8) + facet_wrap(~lakeName, scales = 'free')
-
-ggplot(areas %>% filter(Date > '2017-03-24'), aes(x = Date, y = AreaKm, color = sat)) + 
-        geom_line() + 
-        facet_grid(lakeName ~., scales = 'free') +
-  scale_x_date(breaks = pretty_breaks(n = 20))
-
-
-write.csv(areas, 'areas/full.preQA.20180801.csv')
-
-areas.new <- areas %>%
-        filter(Date > '2017-03-23',
-               Date < '2019-01-01')
-
-## Summary
-new.sum <- areas.new %>%
-  group_by(lakeName, sat) %>%
-  summarize(count = n())
-    
-    # mean.a = mean(AreaKm),
-    #         std.a = sd(AreaKm),
-    #         NHD=median(NHD_Area),
-    #         median.a=median(AreaKm),
-    #         count.a = n())
-
-checkls <- areas.new %>%
-  filter(sat == 'LS') %>%
-        group_by(lakeName) %>%
-        summarize(count = n()) %>%
-        left_join(old %>% 
-                    filter(Mission == 'L8RT') %>% group_by(lakeName) %>% summarize(count.old = n()))
-        
-checkS2 <- areas.new %>%
-  filter(sat == 's2.2') %>%
-        group_by(lakeName, sat) %>%
-        summarize(count = n()) %>%
-        left_join(old %>% 
-                    filter(Mission == 'S2') %>% group_by(lakeName) %>% summarize(count.old = n()))
-       
-
-## Visualize
-ggplot(areas, aes(x = AreaKm)) + geom_histogram(bins = 8) + facet_wrap(~lakeName, scales = 'free')
-
-olds2 <- old %>% filter(Mission == 'S2')
-ggplot(areas.new %>% filter(sat == 's2.2'), aes(x = Date, y = AreaKm)) + 
-        geom_line(aes(color = sat)) + 
-        geom_line(data = olds2, aes(color = Mission)) +
-        facet_grid(lakeName ~., scales = 'free')
-
-# Old Data
-lsold = readRDS('C:/Users/sntopp/OneDrive - University of North Carolina at Chapel Hill/Citizen Science/data/SRS2_20171130.RData')
-s2Old = read.table('/Users/simontopp/OneDrive - University of North Carolina at Chapel Hill/Citizen Science/data/SRS2_20171130.csv', header = TRUE)
-          #header = TRUE)
-
-#Combine landsat and Sentinel Data
-dfL = rbind(dfLS,dfS)
-
-# Old Landsat Summary
-oldls.sum.summary <- lsold %>%
-  group_by(lakeName) %>%
-  summarize(mean.a = mean(AreaKm),
-            std.a = sd(AreaKm),
-            NHD=median(NHD_Area),
-            median.a=median(AreaKm),
-            count.a = n())
-
 
 ```
 
-```{r}
-check <- areas %>% filter(lakeName == 'Great Lake',
-                          Date > '2017-01-01')
 
-check <- areas %>% filter(lakeName == 'Lake Waccamaw',
-                          sat == 'S2')
+## Merge Files and Compare to Old Data
+
+```{r pressure, echo=FALSE}
+
+#Bring in old Data to Compare
+old <- read.csv('areas/NCSC_Full_Old.csv')  %>%
+    mutate(Date = as.Date(Date),
+           Mission = as.character(Mission)) %>%
+           rename(sat = Mission)
+old$sat[old$sat =='L8RT'] = 'LS'
+
+#Read in new files and merge into one dataframe
+ls <- list.files('areas/ls', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 'LS',
+         tile = 'none')
+
+s2 <- list.files('areas/s2', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 'S2',
+         tile = path,
+         path = 999,
+         row = 999)
+
+
+areas <- ls %>%
+  bind_rows(s2)%>%
+    select(-.geo) %>%
+  mutate(Date = as.Date(Date),
+         AreaKm = round(Area/1000000, digits = 4),
+         ID = paste0(sat,'_',GNIS_NAME,'_',Date)) %>%
+  rename(lakeName = GNIS_NAME, NHD_Area = AREASQKM)
+
+#write.csv(areas, 'areas/full.preQA.20180803.csv')
+
+
+## Filter to dates of interest for publication and filter out images flagged from visual qa
+
+## Remove values from visual qa check
+vis.qa <- read.csv('qaRemoveList.csv') %>%
+  mutate(ID = paste0(sat,'_',lakeName,'_',Date)) %>%
+  filter(Reason != 'sheen') #Not sure if sheen is actual qa issue.  The area masks look fine but are 
+                            #generally larger than average, which would make sense if sheen is really 
+                            #just turbid water from large rain event.
+
+area.qa <- areas %>% 
+  filter(Date > '2017-03-22') %>%
+  filter(!(ID %in% vis.qa$ID))
+
+
+##Remove partial tiles
+area.qa <- area.qa %>%
+  filter(!(lakeName == 'Lake Waccamaw' & tile == '17SQT'),
+         !(lakeName == 'Catfish Lake' & tile == '18STD'))
+
+
+## Visualize
+ggplot(area.qa, aes(x = AreaKm, color = sat)) + geom_histogram(bins = 8) + facet_wrap(~lakeName, scales = 'free')
+
+ggplot(area.qa, aes(x = Date, y = AreaKm, color = sat)) + 
+        geom_line() + 
+        facet_grid(lakeName ~., scales = 'free') +
+  scale_x_date(breaks = pretty_breaks(n = 20)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+#ggsave('figures/timeSeriesNew.png', height = 9, width = 6.5, units = 'in')
+
+##Check against old data
+comp <- area.qa %>%
+  filter(Date < '2018-02-01')
+
+ggplot(comp, aes(x = Date, y = AreaKm)) + 
+  geom_line(aes(color = 'New')) +
+  geom_line(data = old, aes(color = 'Old')) +
+  geom_point(aes(shape = sat)) +
+  facet_grid(lakeName ~., scales = 'free') +
+  scale_x_date(breaks = pretty_breaks(n = 20)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+check <- area.qa %>%
+  filter(!(Date == '2018-04-19' & lakeName == 'Singletary Lake' & sat == 'S2'))
+
+#ggsave('figures/timeSeriesComp.png', height = 9, width = 6.5, units = 'in')
+
+comp.sum <- area.qa %>%
+  filter(Date < '2018-02-01') %>%
+  group_by(sat, lakeName) %>%
+  summarise(New = n()) %>%
+  left_join(old %>% 
+              group_by(sat, lakeName) %>% summarize(Old = n())) %>%
+  gather(New:Old, key = 'Series', value = 'Count')
+
+ggplot(comp, aes(x = lakeName, y = Count, fill = Series)) + geom_col(position = 'dodge') +
+  facet_wrap(~sat, nrow = 2) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+#ggsave('figures/countComparison.png')
+
+## Write post qa csv.
+
+write.csv(area.qa, 'areas/full.postQA.20180803.csv')
+
+```
+
+
+## Break-up data into indivudal 
+
+```{r}
+names <- unique(area.qa$lakeName)
+
+for (i in 1:length(names)){
+  out <- area.qa %>% filter(lakeName == names[i]) %>%
+  select(Lake = lakeName, Date, Sat = sat, Area = AreaKm, Scene = 'system:index')
+  write.csv(out, paste0('areas/byLake/', names[i], '.csv'))
+}
+
 ```
 
