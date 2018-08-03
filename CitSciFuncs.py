@@ -170,7 +170,7 @@ def clipImage(image):
   return clip
 
 #Function for filtering out partial images.  If returns true (1), 
-#there are no empty pixels in image
+#the image overlaps with the center point of the lake.
 def filterToNonEmpty(images, region, scale):
   def anyNonZero(image):
     nonZero = image.select(0).reduceRegion(ee.Reducer.anyNonZero(),region.centroid().buffer(60),scale).values().get(0)

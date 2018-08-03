@@ -15,6 +15,7 @@ library(googledrive)
 
 ```
 
+## Python chunk for pulling Landsat Lake Surface Areas
 
 ```{python, engine.path = '/usr/local/bin/python2'}
 #/usr/local/bin/python2
@@ -115,6 +116,8 @@ for i in range(0,lakeNum):
 
 ```
 
+## Python chunk for Pulling Sentinel 2 Lake Surface Areas
+
 ```{python, engine.path = '/usr/local/bin/python2'}
 import ee
 import time
@@ -194,6 +197,5 @@ for i in range(0,lakeNum):
   #Send next task.
   LSExport.start()
   print('Done')
-
 
 ```

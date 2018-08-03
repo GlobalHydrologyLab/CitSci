@@ -44,82 +44,6 @@ for (i in 1:length(files$name)){
 ```
 
 
-## Download scripts for various checks (i.e. 10 meter resolution Sentinel 2, different ndwi thresholds)
-
-```{r}
-
-
-#Sentinel2.double cloud filt (much better)
-path <- 'UNC_LakeAreasS2_clouds2'
-desitnation <- 'areas/s2_clouds2/'
-files <- drive_ls(path)
-
-for (i in 1:length(files$name)){
-        name = files$name[i]
-        drive_download(paste0(path,'/',name), paste0(desitnation,name),
-                       overwrite = T)
-}
-
-#Sentinel 2 10meter res
-
-path <- 'UNC_LakeAreasS2_10m'
-desitnation <- 'areas/s2_10m/'
-files <- drive_ls(path)
-
-for (i in 1:length(files$name)){
-        name = files$name[i]
-        drive_download(paste0(path,'/',name), paste0(desitnation,name),
-                       overwrite = T)
-}
-
-#Sentinel 2 30 meter 0.1 threshold
-
-path <- 'UNC_LakeAreasS2_cThresh'
-desitnation <- 'areas/s2_cThresh/'
-files <- drive_ls(path)
-
-for (i in 1:length(files$name)){
-        name = files$name[i]
-        drive_download(paste0(path,'/',name), paste0(desitnation,name),
-                       overwrite = T)
-}
-
-#Landsat 0.1 threshold
-
-path <- 'UNC_LakeAreasLS_cThresh'
-desitnation <- 'areas/LS_cThresh/'
-files <- drive_ls(path)
-
-for (i in 1:length(files$name)){
-        name = files$name[i]
-        drive_download(paste0(path,'/',name), paste0(desitnation,name),
-                       overwrite = T)
-}
-
-
-s2.2 <- list.files('areas/s2_clouds2', full.names = T) %>%
-        map(read_csv) %>%
-        reduce(rbind) %>%
-  mutate(sat = 's2.2')
-
-s2.10m <- list.files('areas/s2_10m', full.names = T) %>%
-        map(read_csv) %>%
-        reduce(rbind) %>%
-  mutate(sat = 's2.10m')
-
-s2.ct <- list.files('areas/s2_cThresh', full.names = T) %>%
-        map(read_csv) %>%
-        reduce(rbind) %>%
-  mutate(sat = 's2.ct')
-
-ls.ct <- list.files('areas/ls_cThresh', full.names = T) %>%
-        map(read_csv) %>%
-        reduce(rbind) %>%
-  mutate(sat = 'ls.ct')
-
-```
-
-
 ## Merge Files and Compare to Old Data
 
 ```{r pressure, echo=FALSE}
@@ -227,7 +151,7 @@ write.csv(area.qa, 'areas/full.postQA.20180803.csv')
 ```
 
 
-## Break-up data into indivudal 
+## Break-up data into indivudal lakes for expor
 
 ```{r}
 names <- unique(area.qa$lakeName)
@@ -239,4 +163,81 @@ for (i in 1:length(names)){
 }
 
 ```
+
+
+## Extraneous code for donwloading different surface area pulls (i.e. 10 meter resolution, constant ndwi thresholds, etc)
+
+```{r}
+
+
+#Sentinel2.double cloud filt (much better)
+path <- 'UNC_LakeAreasS2_clouds2'
+desitnation <- 'areas/s2_clouds2/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+#Sentinel 2 10meter res
+
+path <- 'UNC_LakeAreasS2_10m'
+desitnation <- 'areas/s2_10m/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+#Sentinel 2 30 meter 0.1 threshold
+
+path <- 'UNC_LakeAreasS2_cThresh'
+desitnation <- 'areas/s2_cThresh/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+#Landsat 0.1 threshold
+
+path <- 'UNC_LakeAreasLS_cThresh'
+desitnation <- 'areas/LS_cThresh/'
+files <- drive_ls(path)
+
+for (i in 1:length(files$name)){
+        name = files$name[i]
+        drive_download(paste0(path,'/',name), paste0(desitnation,name),
+                       overwrite = T)
+}
+
+
+s2.2 <- list.files('areas/s2_clouds2', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 's2.2')
+
+s2.10m <- list.files('areas/s2_10m', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 's2.10m')
+
+s2.ct <- list.files('areas/s2_cThresh', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 's2.ct')
+
+ls.ct <- list.files('areas/ls_cThresh', full.names = T) %>%
+        map(read_csv) %>%
+        reduce(rbind) %>%
+  mutate(sat = 'ls.ct')
+
+```
+
 
