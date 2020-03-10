@@ -48,7 +48,6 @@ ls8 = l8.select(bn8, bns)
 ls = ee.ImageCollection(ls5.merge(ls7).merge(ls8))
 
 #Script for Measuring and exporting Landsat Lake Areas
-
 table1 = ee.FeatureCollection('users/sntopp/Lakes_ply_20171106')
 table2 = ee.FeatureCollection('users/sntopp/NCSC_Horsepen_Lake')
 table = table1.merge(table2)
@@ -90,7 +89,7 @@ for i in range(0,lakeNum):
   #Remove scene edges      
   #LSClip = collection.map(clipImage)
   
-  #Remove partial lake images
+  #Remove partial lake images.  This is not 100% effective and needs improvement.  If you're getting empty returns try commenting this out.
   LSClip = filterToNonEmpty(collection, polygon, 30)
   
   #Clip to lake with 2000 meter buffer
@@ -100,7 +99,6 @@ for i in range(0,lakeNum):
     
   otsu = LSimageNoCloud.map(thresh)
   LSextent = otsu.map(waterExtentLS)
-  #LSextent = LSimageNoCloud.map(waterExtentLS)
         
   output = ee.FeatureCollection(LSextent.map(out))
         
@@ -173,7 +171,7 @@ for i in range(0,lakeNum):
   #Remove scene edges      
   LSClip = collection.map(clipImage)
   
-  #Remove partial lake images
+  #Remove partial lake images.  This is not 100% effective and needs improvement.  If you're getting empty returns try commenting this out.
   LSClip = filterToNonEmpty(LSClip, polygon, 30)
   
   #Clip to lake with 2000 meter buffer
@@ -185,13 +183,12 @@ for i in range(0,lakeNum):
     
   otsu = LSimageNoCloud.map(thresh)
   LSextent = otsu.map(waterExtentLS)
-  #LSextent = LSimageNoCloud.map(waterExtentLS)
         
   output = ee.FeatureCollection(LSextent.map(out))
         
-  LSExport = ee.batch.Export.table.toDrive(collection = output, \
-                                          description = lakename, \
-                                          folder='UNC_LakeAreasS2_cThresh',\
+  LSExport = ee.batch.Export.table.toDrive(collection = output,\
+                                          description = lakename,\
+                                          folder='UNC_LakeAreasS2',\
                                           fileFormat = 'csv')
   maximum_no_of_tasks(20, 30)
   #Send next task.

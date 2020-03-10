@@ -1,0 +1,85 @@
+---
+title: "Sarina_LakeCAT_Join"
+author: "Simon Topp"
+date: "3/10/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(sf)
+library(purrr)
+library(furrr)
+library(mapview)
+
+```
+
+## R Markdown
+
+
+```{r cars}
+## Load in and munge our Citizen Science lakes, a couple ones that got drawn in earth engine a wonky, we'll worry about them later.
+shps <- list.files('USLakes', full.names = T, pattern = '.shp$') %>% .[!. %in% c('USLakes/CitSci_HarrierLakeIll.shp','USLakes/Deep_Quarry.shp', 'USLakes/Herrick_Lake.shp', 'USLakes/Lakes_Horsepen.shp')]
+
+for(i in shps){
+  if(i == shps[1]){
+    lakes = st_read(i) %>% rename_all(toupper) %>% select(GNIS_NAME, GNIS_ID, REACHCODE) %>% st_transform(4326)
+  }else{
+    lakes = lakes %>% rbind(st_read(i) %>% rename_all(toupper) %>% select(GNIS_NAME, GNIS_ID, REACHCODE) %>% st_transform(4326))
+  }
+}
+
+## Double check that things look ok
+mapview(lakes)
+
+## Load in nhd lake data downlowded from, http://www.horizon-systems.com/NHDPlus/V2NationalData.php
+## This can take a second as it's real big
+nhdLakes <- st_read('D:/GIS_Data/NHD/nhdPlusV2_WaterBodiesFull.shp')
+
+## We get 62 matches doing it the easy way.
+check <- nhdLakes %>% filter(REACHCODE %in% lakes$REACHCODE)
+
+## Try it spatially to see if we get more
+
+## Join them up with with NHD to get COMID to then join with LakeCat
+nhdJoin <- lakes %>% st_zm() %>% st_transform(st_crs(nhdLakes)) %>%
+  st_centroid() %>%
+  st_join(.,nhdLakes)
+
+## Check out where the two don't match up
+check <- nhdJoin %>% mutate_at(vars(REACHCODE.x, REACHCODE.y), as.character) %>%
+  filter(REACHCODE.x != REACHCODE.y)
+
+## Looks like we're still good to go! The names match up.
+## Finally join it all up with LakeCAT based on COMID
+## LakeCAT data descriptions can be found at https://www.epa.gov/national-aquatic-resource-surveys/lakecat
+
+lakeCat <- tibble(COMID = unique(nhdJoin$COMID)) 
+lc.files <- list.files('../USLakeClarityTrendr/in/lakeCat/unzip', full.names = T)  #Change this path to the right one whatever that is
+
+for(i in lc.files){
+  if(i == first(lc.files)){
+    lc <- read.csv(i)
+    lakeCat.full <- lakeCat %>%
+      left_join(lc, by ='COMID')}
+  else{
+    lc <- read.csv(i) %>%
+      select(-c(CatAreaSqKm, WsAreaSqKm, CatPctFull,WsPctFull,inStreamCat))
+    lakeCat.full <- lakeCat.full %>%
+      left_join(lc, by = 'COMID')
+  }
+}
+
+lakes.out <- nhdJoin %>% rename(GNIS_NAME = GNIS_NAME.x, GNIS_ID = GNIS_NAME.x, REACHCODE = REACHCODE.x) %>%
+  select(-c(GNIS_ID.y, GNIS_NAME.y, REACHCODE.y)) %>%
+  left_join(lakeCat.full) %>%
+  st_set_geometry(NULL) %>% as.tibble()
+## Join it back up with the original lake names and everything
+
+write.csv(lakes.out, 'out/lakeCatFull.csv')
+
+```
