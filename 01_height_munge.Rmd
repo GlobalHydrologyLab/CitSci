@@ -1,0 +1,120 @@
+---
+title: "01_height_munge"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## First take the raw heights and standardize lakes with multiple gauges based on the GPS readings
+
+```{r cars}
+heights.raw <- read_csv('data/in/LOCSS_raw_heights.csv')
+
+#Waccamaw
+#DMN2 : GPS level on day when elevations were taken 2.18, they should all be the same elevation, so switch to one
+#HCN2 : GPS 2.18 
+#WCN2 : GPS 1.77	
+#ZZN2/NC1009 : GPS 2.24	 
+
+heights.raw$height[heights.raw$gauge_id == 'DMN2'] <-
+  heights.raw$height[heights.raw$gauge_id == 'DMN2'] + (2.24-2.18)
+
+heights.raw$height[heights.raw$gauge_id == 'HCN2'] <-
+  heights.raw$height[heights.raw$gauge_id == 'HCN2'] + (2.24-2.18)
+
+heights.raw$height[heights.raw$gauge_id == 'WCN2'] <-
+  heights.raw$height[heights.raw$gauge_id == 'WCN2'] + (2.24-1.77)
+
+#phelps
+#FDN2 : GPS 2.59
+#PHN2 : GPS 11.79	
+
+heights.raw$height[heights.raw$gauge_id == 'PHN2'] <-
+  heights.raw$height[heights.raw$gauge_id == 'PHN2'] + (2.59-11.79)
+
+
+#white
+#NWN2 : GPS 1.88	
+#WHN2 : GPS 1.18	
+
+heights.raw$height[heights.raw$gauge_id == 'WHN2'] <-
+  heights.raw$height[heights.raw$gauge_id == 'WHN2'] + (1.88-1.18)
+
+#lawrence
+#LAW2 : GPS 0.4
+#XAW2 : GPS 0.38	
+
+heights.raw$height[heights.raw$gauge_id == 'XAW2'] <-
+  heights.raw$height[heights.raw$gauge_id == 'XAW2'] + (0.4-0.38)
+
+```
+## Take the averages first of lakes with multiple gauges and then grouped by lake so we end up with one measurement per day
+
+```{r}
+## Pull in the Wisconsin data and reformat it
+paths <- list.files('data/in/Wisc_raw_heights', full.names = T)
+
+wisc.heights.raw <- map_dfr(paths, read_csv)
+
+## Two duplicate names between Wisconsin and Washington, make explicit
+wisc.heights.raw$Lake_Name[wisc.heights.raw$Lake_Name == 'Deep Lake'] <- 'Deep Lake Wisc.'
+wisc.heights.raw$Lake_Name[wisc.heights.raw$Lake_Name == 'Phantom Lake'] <- 'Phantom Lake Wisc.'
+
+
+wisc.heights.raw <- wisc.heights.raw %>%
+  mutate(date = mdy(Date)) %>%
+  select(name = Lake_Name, date, height = Level) %>%
+  mutate(height = height*0.3048,
+         region = 'WI',
+         name.std = name) %>%
+  group_by(name.std, name, date, region) %>%
+  summarise(height = mean(height)) %>%
+  ungroup()
+```
+
+
+
+```{r}
+## Make a look-up table to standardize lake names
+lakes <- read_csv('data/in/lake_properties.csv')
+
+## Check for mismatches
+check <- heights.raw %>% filter(!gauge_id %in% lakes$gauge_id) %>%
+  distinct(name, .keep_all = T)
+## There are 14, but I think these are international gauges
+
+check <- wisc.heights.raw %>% left_join(lakes) %>% filter(is.na(nSat))
+
+## Average by lake then date
+heights.raw <- heights.raw %>% left_join(
+  lakes %>% 
+    mutate(name.std = name) %>%
+    select(name.std, gauge_id, region)) %>%
+  group_by(name.std, gauge_id, region, date) %>%
+  summarise(height = mean(height)) %>%
+  group_by(name.std, date, region) %>%
+  summarise(height = mean(height)) %>%
+  ungroup() %>%
+  filter(!is.na(region))
+
+
+heights.munged <- heights.raw %>% 
+  bind_rows(wisc.heights.raw %>% select(-name))
+
+
+## Check counts
+check <- heights.munged %>% group_by(name.std, region) %>%
+  summarise(count = n()) %>%
+  arrange(count)
+
+write_csv(heights.munged, 'data/out/heights_munged.csv')
+```
+
+

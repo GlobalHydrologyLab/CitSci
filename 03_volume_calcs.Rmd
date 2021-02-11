@@ -1,0 +1,136 @@
+---
+title: "03_volume_calcs"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Pull in the lake height and lake lake area data
+
+```{r}
+areas <- read_csv('data/out/areas_munged.csv') %>%
+  select(area = Reconstructed, name, date = timestamp) %>%
+  mutate(date = as_date(date),
+         areaID = row_number())
+
+heights <- read_csv('data/out/heights_munged.csv') %>%
+  select(height, name = name.std, date)
+
+lake.summaries <- read_csv('data/in/lake_properties.csv')
+
+##Remove outliers from height data
+meds <- heights %>% group_by(name) %>%
+  summarise(med = median(height))
+
+heights <- heights %>% left_join(meds) %>%
+  mutate(areaDif = abs(med - height)/med,
+         heightID = row_number()) %>%
+  filter(areaDif <= 0.25) %>%
+  select(-med, -areaDif)
+
+```
+
+
+## Find matchup (+/- 1 day pairs)
+
+```{r}
+sameday <- areas %>% inner_join(heights) %>%
+  group_by(name, date) %>%
+  summarise(area = mean(area),
+         height = mean(height)) %>%
+  mutate(obID = paste0(date,"_",name)) %>%
+  ungroup()
+
+plusone <- areas %>%
+  mutate(area_date = date,
+         date = date + 1) %>%
+  inner_join(heights) %>%
+  group_by(name, date) %>%
+  summarise(area = mean(area),
+         height = mean(height)) %>%
+  mutate(obID = paste0(date,"_",name)) %>%
+  ungroup()
+
+minusone <- areas %>%
+  mutate(area_date = date,
+         date = date - 1) %>%
+  inner_join(heights) %>%
+  group_by(name, date) %>%
+  summarise(area = mean(area),
+         height = mean(height)) %>%
+  mutate(obID = paste0(date,"_",name)) %>%
+  ungroup()
+
+## We prefer same day,
+plusone <- plusone %>% filter(!obID %in% sameday$obID)
+minusone <- minusone %>% filter(!obID %in% sameday$obID)
+
+## Check for obs both in both plus and minus and average them
+overlap <- plusone %>% filter(obID %in% minusone$obID) %>%
+  group_by(name, date, obID) %>%
+  summarise(height = mean(height),
+            area = mean(area))
+
+matchups <- sameday %>% mutate(matchup = 'same') %>%
+  bind_rows(plusone %>% filter(!obID %in% overlap$obID) %>% mutate(matchup = 'plusone')) %>%
+  bind_rows(minusone %>% filter(!obID %in% overlap$obID) %>% mutate(matchup = 'minusone')) %>%
+  bind_rows(overlap %>% mutate(matchup = 'average')) %>%
+  mutate(area_m = area*1000000)
+
+
+## This leaves us with only 77 lakes where there is at least 1 matchup
+dplyr::count(matchups,name) %>% filter(n>2)
+## and 60 lakes with at least 3
+
+```
+
+## Calculate volume changes
+
+```{r}
+test <- matchups %>% filter(name == 'Bay Tree Lake')
+
+## Simple volumetric change based on trapezoidal volume
+volChange <- function(lake){
+
+date.first <- lake[lake$date == min(lake$date),]
+
+lake %>% arrange(date) %>%
+  mutate(area_diff = area_m + date.first$area_m[1],
+         height_diff = height - date.first$height[1],
+         vol_change = height_diff*(area_diff/2))
+}
+  
+volumes <- matchups %>% group_by(name) %>%
+  nest() %>%
+  mutate(volCalcs = map(data, volChange)) %>%
+  select(-data) %>%
+  unnest(cols = c(volCalcs))
+
+
+## Hypsometric curve calculations to expand volume change to all the lakes
+filter <- dplyr::count(volumes, name) %>% filter(n<3)
+
+fits <- volumes %>%
+  filter(!name %in% filter$name) %>%
+  group_by(name) %>%
+  nest() %>%
+  mutate(fit = map(data, function(df) lm(vol_change ~ height, data = df))) %>%
+  select(-data)
+
+volumes_fitted <- heights %>%
+  nest(-name) %>%
+  inner_join(fits) %>%
+  mutate(vol_fit = map2(fit, data, ~predict(.x, newdata = .y) %>% unname())) %>%
+  select(-fit) %>%
+  unnest(cols = c(data, vol_fit))
+
+
+write_csv(volumes_fitted, 'data/out/volumes_fitted.csv')
+```
+
+

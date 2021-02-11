@@ -1,0 +1,84 @@
+---
+title: "04_lake_correlations"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r}
+lake.summaries <- read_csv('data/in/lake_properties.csv') %>%
+  distinct(name, region)
+
+volumes <- read_csv('data/out/volumes_fitted.csv') %>%
+  left_join(lake.summaries)
+
+lakeOne <- 'Bay Tree Lake'
+lakeTwo <- 'Salters Lake'
+
+corrs <- function(lakeOne, lakeTwo){
+  
+  lake1 <- volumes %>% filter(name == lakeOne) %>% 
+    select(date, vol1 = vol_fit)
+  
+  lake2 <- volumes %>% filter(name == lakeTwo) %>% 
+    select(date, vol2 = vol_fit)
+  
+  sameday <- lake1 %>% inner_join(lake2)
+    
+  plusone <- lake1 %>% 
+    inner_join(lake2 %>%
+                 mutate(date = date + 1)) %>%
+    filter(!date %in% sameday$date)
+  
+  minusone <- lake1 %>% 
+    inner_join(lake2 %>%
+                 mutate(date = date - 1)) %>%
+    filter(!date %in% sameday$date)
+
+  
+  ## Check for obs both in both plus and minus and average them
+  overlap <- plusone %>% filter(date %in% minusone$date) %>%
+    group_by(date) %>%
+    summarise(vol1 = mean(vol1),
+              vol2 = mean(vol2))
+  
+  matchups <- sameday %>%
+    bind_rows(plusone %>% filter(!date %in% overlap$date)) %>%
+    bind_rows(minusone %>% filter(!date %in% overlap$date)) %>%
+    bind_rows(overlap) %>%
+    arrange(date)
+  
+  if(nrow(matchups) < 10){
+    tibble(lake1 = lakeOne, lake2 = lakeTwo, rho = NA, 
+           p.value = NA, matchups = nrow(matchups))
+  }else{
+    s.corr <- cor.test(matchups$vol1, matchups$vol2, method = 'spearman')
+    
+    tibble(lake1 = lakeOne, lake2 = lakeTwo, rho = s.corr$estimate, 
+         p.value = s.corr$p.value, matchups = nrow(matchups))
+  }
+}
+
+lakes.filtered <- lake.summaries %>% filter(name %in% volumes$name)
+
+lakeCombs <- combn(lakes.filtered$name, 2) %>%
+  t() %>% as_tibble() %>% left_join(lakes.filtered %>% rename(V1 = name)) %>%
+  left_join(lakes.filtered %>% rename(V2 = name, region2 = region)) %>%
+  filter(region == region2)
+
+lakeCorrs <- map2_dfr(lakeCombs$V1,lakeCombs$V2, corrs) 
+
+lakeCorrs <- lakeCorrs %>% left_join(lakes.filtered %>% rename(lake1 = name))
+
+ggplot(lakeCorrs, aes(x = region, y = rho)) + geom_boxplot()
+
+dplyr::count(lakeCorrs, region)
+
+
+```
+
