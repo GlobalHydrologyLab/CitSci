@@ -10,7 +10,7 @@ library(tidyverse)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Pull in the lake height and lake lake area data
+# Pull in the munged lake height and lake area data
 
 ```{r}
 areas <- read_csv('data/out/areas_munged.csv') %>%
@@ -36,8 +36,7 @@ heights <- heights %>% left_join(meds) %>%
 
 ```
 
-
-## Find matchup (+/- 1 day pairs)
+## Find matchups (+/- 1 day pairs)
 
 ```{r}
 sameday <- areas %>% inner_join(heights) %>%
@@ -93,6 +92,7 @@ dplyr::count(matchups,name) %>% filter(n>2)
 ## Calculate volume changes
 
 ```{r}
+
 ## Simple volumetric change based on trapezoidal volume
 volChange <- function(lake){
 
@@ -111,7 +111,7 @@ volumes <- matchups %>% group_by(name) %>%
   unnest(cols = c(volCalcs))
 
 
-## Hypsometric curve calculations to expand volume change to all the lakes
+## Rating curve calculations to expand volume change to all the height measurements
 filter <- dplyr::count(volumes, name) %>% filter(n<3)
 
 fits <- volumes %>%
@@ -134,8 +134,7 @@ heights %>% filter(name %in% fits$name)
 write_csv(volumes_fitted, 'data/out/volumes_fitted.csv')
 ```
 
-
-
+## Join the the areas and look at some timeseries
 
 ```{r}
 areas <- areas %>% filter(sat == 'Landsat')

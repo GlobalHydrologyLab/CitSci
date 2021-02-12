@@ -15,10 +15,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ## First take the raw heights and standardize lakes with multiple gauges based on the GPS readings
 
 ```{r cars}
+
+## Pull in the Raw Heights
 heights.raw <- read_csv('data/in/LOCSS_raw_heights.csv')
 
+
+## Standardize lakes with multiple guages based on preliminary GPS data.
+
 #Waccamaw
-#DMN2 : GPS level on day when elevations were taken 2.18, they should all be the same elevation, so switch to one
+#DMN2 :  2.18
 #HCN2 : GPS 2.18 
 #WCN2 : GPS 1.77	
 #ZZN2/NC1009 : GPS 2.24	 
@@ -55,7 +60,8 @@ heights.raw$height[heights.raw$gauge_id == 'XAW2'] <-
   heights.raw$height[heights.raw$gauge_id == 'XAW2'] + (0.4-0.38)
 
 ```
-## Take the averages first of lakes with multiple gauges and then grouped by lake so we end up with one measurement per day
+
+## Pull in the data from Wisconsin and standardize its format to match LOCSS data
 
 ```{r}
 ## Pull in the Wisconsin data and reformat it
@@ -80,6 +86,7 @@ wisc.heights.raw <- wisc.heights.raw %>%
 ```
 
 
+## Make sure we have all the lakes/gauges with standardized names, average first by lake then by day to get one height measurement per day per lake 
 
 ```{r}
 ## Make a look-up table to standardize lake names

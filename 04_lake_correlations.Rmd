@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```
 
+## Read in our volume data and calculate correlations between lake pairs
+
 ```{r}
 lake.summaries <- read_csv('data/in/lake_properties.csv') %>%
   distinct(name, region)

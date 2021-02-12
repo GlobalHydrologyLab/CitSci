@@ -1,0 +1,133 @@
+---
+title: "CitSci_LakeComps"
+author: "Simon Topp"
+date: "2/6/2021"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Bring in the remote sensing data from Earth Engine and Standardize the names
+
+```{r}
+## Bring in the remote sensing lake areas
+## 30% cloud cover filter is LakeAreas_CC30, original (or close to it pull) is LakeAreas_SarinaPull
+
+areas <- read_csv('data/in/LakeAreas_CC30.csv') %>%
+  select(Reconstructed, ReconstructedAll, fillStatus, image_id, lakeMask, name, timestamp, refArea) %>%
+  mutate(timestamp = as.POSIXct(timestamp/1000, origin = ymd('1970-01-01')),
+         sat = ifelse(grepl('_LC08_',image_id), 'Landsat', 'Sentinel'),
+         refArea = round(refArea, 3)) %>%
+  filter(timestamp < '2020-02-09')
+
+
+## Make sure names match our standardized ones
+lakes <- read_csv('data/in/lake_properties.csv') %>% filter(!is.na(name))
+area.summs <- read_csv('data/in/lake_area_summaries.csv')
+
+## Two repeated names, make them unique
+area.summs %>% group_by(name) %>%
+  summarise(count = n()) %>%
+  filter(count >1)
+
+# Checked EE: 
+# Wash Deep lake has ref area of 0.157
+# Wash Phantom has ref area of 0.261
+names.out <- unique(areas$name)
+names.std <- unique(lakes$name)
+
+tibble(name = names.out) %>% filter(!name %in% names.std)
+tibble(name = names.std) %>% filter(!name %in% names.out)
+
+areas$name[areas$name == 'Lake Mattamuskeet E'] <- 'Lake Mattamuskeet East'
+areas$name[areas$name == 'Lake Mattamuskeet W'] <- 'Lake Mattamuskeet West'
+areas$name[areas$name == 'Beaver Lakes'] <- 'Beaver Lake'
+areas$name[areas$name == 'Defiance Lake'] <- 'Lake Defiance'
+areas$name[areas$name == 'Deep Quarry'] <- 'Deep Quarry Lake'
+areas$name[areas$name == 'Huntley Lake'] <- 'Timber Lake'
+areas$name[areas$name == 'Deep Lake' & areas$refArea == 0.135] <- 'Deep Lake Wisc.'
+areas$name[areas$name == 'Deep Lake' & areas$refArea == 0.157] <- 'Deep Lake Wash.'
+areas$name[areas$name == 'Phantom Lake' & areas$refArea == 0.261] <- 'Phantom Lake Wash.'
+areas$name[areas$name == 'Phantom Lake' & areas$refArea == 0.184] <- 'Phantom Lake Wisc.'
+areas$name[areas$name == 'Loon Lake' & areas$refArea == 0.672] <- 'West Loon Lake'
+
+
+names.out <- unique(areas$name)
+names.std <- unique(lakes$name)
+
+tibble(name = names.out) %>% filter(!name %in% names.std)
+tibble(name = names.std) %>% filter(!name %in% names.out)
+
+meds <- areas %>% group_by(name) %>%
+  summarise(med = median(Reconstructed))
+
+areas <- areas %>% left_join(meds) %>%
+  mutate(areaDif = abs(med - Reconstructed)/med) %>%
+  filter(areaDif <= 0.25)
+
+write_csv(areas, 'data/out/areas_munged.csv')
+```
+
+## Filter to compare Sentinel 2 obs to Landsat
+
+```{r}
+ggplot(areas, aes(x = sat, fill = sat)) + geom_bar() + theme_bw()
+
+#Same day matchups
+matchups <- areas %>%
+  select(name, area = Reconstructed, sat, timestamp) %>%
+  mutate(date = as_date(timestamp)) %>%
+  select(-timestamp) %>%
+  pivot_wider(names_from = 'sat', values_from = 'area', values_fn = mean) %>%
+  na.omit() %>%
+  mutate(diff = Landsat-Sentinel,
+         apd = Metrics::ape(Landsat, Sentinel),
+         percDif = (Landsat-Sentinel)/Landsat)
+
+ggplot(matchups, aes(x = percDif)) + geom_density(fill = 'cyan',alpha = .2) + 
+  scale_x_continuous(labels = scales::percent) +
+  labs(title = 'Same Day Matchups (n = 209)', x = 'Percent Difference (L-S/L)') +
+  theme_bw()
+
+
+ggplot(matchups, aes(x = percDif)) + geom_histogram() + 
+  scale_x_continuous(labels = scales::percent) +
+  labs(title = 'Same Day Matchups (n = 209)', x = 'Percent Difference (Landsat-S2/Landsat)') +
+  theme_bw()
+
+ggplot(matchups, aes(x = diff)) + geom_histogram() + 
+  labs(title = 'Same Day Matchups (n = 209)', x = 'Absolute Difference (sq. km.)') +
+  theme_bw()
+
+Metrics::mape(matchups$Landsat, matchups$Sentinel)
+Metrics::percent_bias(matchups$Landsat, matchups$Sentinel)
+```
+
+```{r}
+matchups <- areas %>%
+  group_by(name, sat) %>%
+  summarise(count = n()) %>%
+  pivot_wider(names_from = 'sat', values_from = 'count') %>%
+  filter(Sentinel > 50)
+
+## there are 13 lakes with over 50 S2 obs
+matchups <- areas %>% filter(name %in% matchups$name) %>%
+  select(name, area = Reconstructed, sat, timestamp) %>%
+  mutate(date = as_date(timestamp)) %>%
+  select(-timestamp)
+
+ggplot(matchups, aes(x = area, color = sat)) + geom_freqpoly() +
+  facet_wrap(~name, scales = 'free')
+
+t.tests <- matchups %>%
+  group_by(name) %>%
+  summarise(t = t.test(area[sat == 'Landsat'], area[sat == 'Sentinel'])$p.value) 
+
+```
