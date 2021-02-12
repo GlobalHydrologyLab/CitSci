@@ -14,14 +14,15 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 areas <- read_csv('data/out/areas_munged.csv') %>%
-  select(area = Reconstructed, name, date = timestamp) %>%
+  select(area = Reconstructed, name, date = timestamp, sat) %>%
   mutate(date = as_date(date),
          areaID = row_number())
 
 heights <- read_csv('data/out/heights_munged.csv') %>%
   select(height, name = name.std, date)
 
-lake.summaries <- read_csv('data/in/lake_properties.csv')
+lake.summaries <- read_csv('data/in/lake_properties.csv') %>%
+  distinct(name,.keep_all = T)
 
 ##Remove outliers from height data
 meds <- heights %>% group_by(name) %>%
@@ -92,18 +93,16 @@ dplyr::count(matchups,name) %>% filter(n>2)
 ## Calculate volume changes
 
 ```{r}
-test <- matchups %>% filter(name == 'Bay Tree Lake')
-
 ## Simple volumetric change based on trapezoidal volume
 volChange <- function(lake){
 
-date.first <- lake[lake$date == min(lake$date),]
-
-lake %>% arrange(date) %>%
-  mutate(area_diff = area_m + date.first$area_m[1],
-         height_diff = height - date.first$height[1],
-         vol_change = height_diff*(area_diff/2))
-}
+  date.first <- lake[lake$date == min(lake$date),]
+  
+  lake %>% arrange(date) %>%
+    mutate(area_diff = area_m + date.first$area_m[1],
+           height_diff = height - date.first$height[1],
+           vol_change = height_diff*(area_diff/2))
+  }
   
 volumes <- matchups %>% group_by(name) %>%
   nest() %>%
@@ -129,8 +128,31 @@ volumes_fitted <- heights %>%
   select(-fit) %>%
   unnest(cols = c(data, vol_fit))
 
+# Check Counts
+heights %>% filter(name %in% fits$name)
 
 write_csv(volumes_fitted, 'data/out/volumes_fitted.csv')
 ```
 
+
+
+
+```{r}
+areas <- areas %>% filter(sat == 'Landsat')
+
+volsLong <- volumes_fitted %>%
+  full_join(areas) %>%
+  #filter(area > 5) %>%
+  select(name, date, area, height, vol_fit) %>%
+  pivot_longer(c(area,height, vol_fit), names_to = 'Metric') %>%
+  mutate(Metric = factor(Metric, levels = c('height', 'area', 'vol_fit')))
+
+lake <- 'Bay Tree Lake'
+
+volsLong %>% filter(name == lake,  date > '2017-04-01') %>%
+  ggplot(aes(x = date, y = value)) + geom_line() + geom_point()   +
+  facet_wrap(~Metric, scales = 'free_y', ncol = 1) +
+  ggtitle(lake)
+
+```
 

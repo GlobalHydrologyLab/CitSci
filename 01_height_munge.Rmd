@@ -102,12 +102,13 @@ heights.raw <- heights.raw %>% left_join(
   group_by(name.std, date, region) %>%
   summarise(height = mean(height)) %>%
   ungroup() %>%
-  filter(!is.na(region))
+  filter(!is.na(region)) %>%
+  filter(height >= 0,
+         height <= 3.3)
 
 
 heights.munged <- heights.raw %>% 
   bind_rows(wisc.heights.raw %>% select(-name))
-
 
 ## Check counts
 check <- heights.munged %>% group_by(name.std, region) %>%

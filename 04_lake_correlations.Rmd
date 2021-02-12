@@ -17,9 +17,6 @@ lake.summaries <- read_csv('data/in/lake_properties.csv') %>%
 volumes <- read_csv('data/out/volumes_fitted.csv') %>%
   left_join(lake.summaries)
 
-lakeOne <- 'Bay Tree Lake'
-lakeTwo <- 'Salters Lake'
-
 corrs <- function(lakeOne, lakeTwo){
   
   lake1 <- volumes %>% filter(name == lakeOne) %>% 
@@ -53,7 +50,7 @@ corrs <- function(lakeOne, lakeTwo){
     bind_rows(overlap) %>%
     arrange(date)
   
-  if(nrow(matchups) < 10){
+  if(nrow(matchups) < 3){
     tibble(lake1 = lakeOne, lake2 = lakeTwo, rho = NA, 
            p.value = NA, matchups = nrow(matchups))
   }else{
@@ -75,9 +72,66 @@ lakeCorrs <- map2_dfr(lakeCombs$V1,lakeCombs$V2, corrs)
 
 lakeCorrs <- lakeCorrs %>% left_join(lakes.filtered %>% rename(lake1 = name))
 
-ggplot(lakeCorrs, aes(x = region, y = rho)) + geom_boxplot()
+lakeCorrs <- lakeCorrs %>%
+  mutate(region = factor(region, levels = c('IL','NC','WA','WI')))
 
-dplyr::count(lakeCorrs, region)
+ggplot(lakeCorrs, aes(x = region, y = rho)) + geom_boxplot() 
+
+dplyr::count(lakeCorrs %>% na.omit(), region)
+```
+
+
+## Calculate lake distances
+
+```{r}
+library(sf)
+lakes.sf <- st_read('data/in/Locss_Lakes.shp') %>%
+  select(name = GNIS_NAME, area = AREASQKM) %>%
+  st_transform(crs = 5070)
+
+## Fix the names
+lakes.sf$name[lakes.sf$name == 'Lake Mattamuskeet E'] <- 'Lake Mattamuskeet East'
+lakes.sf$name[lakes.sf$name == 'Lake Mattamuskeet W'] <- 'Lake Mattamuskeet West'
+lakes.sf$name[lakes.sf$name == 'Beaver Lakes'] <- 'Beaver Lake'
+lakes.sf$name[lakes.sf$name == 'Defiance Lake'] <- 'Lake Defiance'
+lakes.sf$name[lakes.sf$name == 'Deep Quarry'] <- 'Deep Quarry Lake'
+lakes.sf$name[lakes.sf$name == 'Huntley Lake'] <- 'Timber Lake'
+lakes.sf$name[lakes.sf$name == 'Deep Lake' & lakes.sf$area == 0.135] <- 'Deep Lake Wisc.'
+lakes.sf$name[lakes.sf$name == 'Deep Lake' & lakes.sf$area == 0.157] <- 'Deep Lake Wash.'
+lakes.sf$name[lakes.sf$name == 'Phantom Lake' & lakes.sf$area == 0.261] <- 'Phantom Lake Wash.'
+lakes.sf$name[lakes.sf$name == 'Phantom Lake' & lakes.sf$area == 0.184] <- 'Phantom Lake Wisc.'
+lakes.sf$name[lakes.sf$name == 'Loon Lake' & lakes.sf$area == 0.672] <- 'West Loon Lake'
+
+lakes.sf <- lakes.sf %>% left_join(lake.summaries)
+
+
+LakeDistances <- function(lake1, lake2){
+  dist <- st_distance(lakes.sf %>% filter(name == lake1), lakes.sf %>% filter(name == lake2))[1] %>%
+  as.integer()
+}
+
+distances <- lakeCorrs %>%
+  mutate(dist = map2_dbl(lake1,lake2, LakeDistances))
+
+
+ggplot(distances %>% na.omit(), aes(x = dist, y = rho)) +
+  geom_point(aes(size= matchups)) +
+  geom_smooth(method = 'lm', se = F) +
+  facet_wrap(~region, scales = 'free')
+
+
+ggplot(distances %>% na.omit(), aes(x = dist, y = rho)) +
+  geom_point(aes(size= matchups)) +
+  geom_smooth(method = 'lm', se = F) +
+  ggtitle('All Regions')
+
+
+lakeCombsFull <- combn(lake.summaries$name, 2) %>%
+  t() %>% as_tibble() %>% left_join(lake.summaries %>% rename(V1 = name)) %>%
+  left_join(lake.summaries %>% rename(V2 = name, region2 = region)) %>%
+  filter(region == region2) %>%
+  mutate()
+
 
 
 ```
