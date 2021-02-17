@@ -13,26 +13,19 @@ knitr::opts_chunk$set(echo = TRUE)
 # Pull in the munged lake height and lake area data
 
 ```{r}
-areas <- read_csv('data/out/areas_munged.csv') %>%
-  select(area = Reconstructed, name, date = timestamp, sat) %>%
+areas <- read_csv('data/out/areas_munged_CC30.csv') %>%
+  select(area = Reconstructed, sat, name, date = timestamp) %>%
   mutate(date = as_date(date),
-         areaID = row_number())
+         areaID = row_number()) %>%
+  group_by(name, date) %>%
+  summarise(area = mean(area)) %>%
+  ungroup()
 
 heights <- read_csv('data/out/heights_munged.csv') %>%
   select(height, name = name.std, date)
 
 lake.summaries <- read_csv('data/in/lake_properties.csv') %>%
   distinct(name,.keep_all = T)
-
-##Remove outliers from height data
-meds <- heights %>% group_by(name) %>%
-  summarise(med = median(height))
-
-heights <- heights %>% left_join(meds) %>%
-  mutate(areaDif = abs(med - height)/med,
-         heightID = row_number()) %>%
-  filter(areaDif <= 0.25) %>%
-  select(-med, -areaDif)
 
 ```
 
@@ -112,7 +105,7 @@ volumes <- matchups %>% group_by(name) %>%
 
 
 ## Rating curve calculations to expand volume change to all the height measurements
-filter <- dplyr::count(volumes, name) %>% filter(n<3)
+filter <- dplyr::count(volumes, name) %>% filter(n<2)
 
 fits <- volumes %>%
   filter(!name %in% filter$name) %>%
@@ -128,30 +121,116 @@ volumes_fitted <- heights %>%
   select(-fit) %>%
   unnest(cols = c(data, vol_fit))
 
-# Check Counts
-heights %>% filter(name %in% fits$name)
 
-write_csv(volumes_fitted, 'data/out/volumes_fitted.csv')
+write_csv(volumes_fitted, 'data/out/volumes_fitted_LS30.csv')
 ```
 
 ## Join the the areas and look at some timeseries
 
 ```{r}
-areas <- areas %>% filter(sat == 'Landsat')
+areas <- read_csv('data/out/areas_munged_CC30.csv') %>%
+  select(area = Reconstructed, sat, name, date = timestamp) %>%
+  mutate(date = as_date(date))
 
 volsLong <- volumes_fitted %>%
   full_join(areas) %>%
   #filter(area > 5) %>%
-  select(name, date, area, height, vol_fit) %>%
-  pivot_longer(c(area,height, vol_fit), names_to = 'Metric') %>%
+  select(name, area, date, height, vol_fit) %>%
+  pivot_longer(c(area, height, vol_fit), names_to = 'Metric') %>%
   mutate(Metric = factor(Metric, levels = c('height', 'area', 'vol_fit')))
 
-lake <- 'Bay Tree Lake'
+lake <- 'Salters Lake'
 
 volsLong %>% filter(name == lake,  date > '2017-04-01') %>%
-  ggplot(aes(x = date, y = value)) + geom_line() + geom_point()   +
+  ggplot(aes(x = date, y = value)) + geom_path() + geom_point()   +
   facet_wrap(~Metric, scales = 'free_y', ncol = 1) +
   ggtitle(lake)
+
+
+```
+
+## Compare to SB's volume outputs
+```{r}
+###
+ids <- read_csv('data/in/lake_properties.csv')
+
+volumes <- volumes %>% left_join(ids)
+
+root <- 'data/in/Vols_Sarina/'
+
+paths <- list.files('data/in/Vols_Sarina', pattern = '.csv')
+
+Vols_SB <- map_dfr(paths, function(path) 
+  read_csv(paste0(root,path)) %>% mutate(gauge_id = strsplit(path, '.csv') %>% first())
+  )
+
+id <- ids$gauge_id[9]
+
+p1 <- volumes %>%
+  filter(gauge_id == id) %>%
+  ggplot(aes(x = date, y = vol_change)) + geom_point() +
+  geom_line() + 
+  ggtitle("Simon")
+
+p2 <- Vols_SB %>%
+  filter(gauge_id == id) %>%
+  ggplot(aes(x = Date, y = ChangeInVolumem3)) + geom_point() +
+  geom_line() +
+  ggtitle('Sarina')
+
+print(paste0('Simon: ', nrow(volumes %>% filter(gauge_id == id)),' Sarina: ',nrow(Vols_SB %>% filter(gauge_id == id))))
+
+gridExtra::grid.arrange(p1,p2, nrow = 2)
+
+
+check <- Vols_SB %>%
+  filter(gauge_id == id)
+
+```
+
+
+
+## Compare to SB's rating curve outputs
+```{r}
+###
+ids <- read_csv('data/in/lake_properties.csv')
+
+volumes_fitted <- volumes_fitted %>% left_join(ids)
+
+root <- 'data/in/rc_out_SB/'
+
+paths <- list.files('data/in/rc_out_SB')
+
+Vols_SB <- map_dfr(paths, function(path) 
+  read_csv(paste0(root,path)) %>% mutate(gauge_id = strsplit(path, '_')[[1]][[1]] %>% first())
+  )
+
+id <- ids$gauge_id[11]
+
+p1 <- volumes_fitted %>%
+  filter(gauge_id == id) %>%
+  ggplot(aes(x = date, y = vol_fit)) + geom_point() +
+  geom_line() + 
+  ggtitle("Simon")
+
+p2 <- Vols_SB %>%
+  filter(gauge_id == id) %>%
+  ggplot(aes(x = Date, y = `^Volume(RC)`)) + geom_point() +
+  geom_line() +
+  ggtitle('Sarina')
+
+print(paste0('Simon: ', nrow(volumes_fitted %>% filter(gauge_id == id)),' Sarina: ',nrow(Vols_SB %>% filter(gauge_id == id))))
+
+gridExtra::grid.arrange(p1,p2, nrow = 2)
+
+
+```
+
+
+```{r}
+hist(Vols_SB$Heightm[Vols_SB$gauge_id == 'SAN2'])
+hist(volumes$height[volumes$gauge_id == 'SAN2'])
+
 
 ```
 

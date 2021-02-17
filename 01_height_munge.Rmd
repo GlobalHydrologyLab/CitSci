@@ -19,7 +19,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Pull in the Raw Heights
 heights.raw <- read_csv('data/in/LOCSS_raw_heights.csv')
 
-
 ## Standardize lakes with multiple guages based on preliminary GPS data.
 
 #Waccamaw
@@ -77,8 +76,7 @@ wisc.heights.raw$Lake_Name[wisc.heights.raw$Lake_Name == 'Phantom Lake'] <- 'Pha
 wisc.heights.raw <- wisc.heights.raw %>%
   mutate(date = mdy(Date)) %>%
   select(name = Lake_Name, date, height = Level) %>%
-  mutate(height = height*0.3048,
-         region = 'WI',
+  mutate(region = 'WI',
          name.std = name) %>%
   group_by(name.std, name, date, region) %>%
   summarise(height = mean(height)) %>%
@@ -89,14 +87,13 @@ wisc.heights.raw <- wisc.heights.raw %>%
 ## Make sure we have all the lakes/gauges with standardized names, average first by lake then by day to get one height measurement per day per lake 
 
 ```{r}
-## Make a look-up table to standardize lake names
+## Join with standardized names
 lakes <- read_csv('data/in/lake_properties.csv')
 
 ## Check for mismatches
 check <- heights.raw %>% filter(!gauge_id %in% lakes$gauge_id) %>%
   distinct(name, .keep_all = T)
 ## There are 14, but I think these are international gauges
-
 check <- wisc.heights.raw %>% left_join(lakes) %>% filter(is.na(nSat))
 
 ## Average by lake then date
@@ -104,18 +101,20 @@ heights.raw <- heights.raw %>% left_join(
   lakes %>% 
     mutate(name.std = name) %>%
     select(name.std, gauge_id, region)) %>%
+  filter(height >= 0,
+       height <= 3.3) %>%
   group_by(name.std, gauge_id, region, date) %>%
   summarise(height = mean(height)) %>%
   group_by(name.std, date, region) %>%
   summarise(height = mean(height)) %>%
   ungroup() %>%
-  filter(!is.na(region)) %>%
-  filter(height >= 0,
-         height <= 3.3)
+  filter(!is.na(region))
+
 
 
 heights.munged <- heights.raw %>% 
-  bind_rows(wisc.heights.raw %>% select(-name))
+  bind_rows(wisc.heights.raw %>% select(-name)) %>%
+  mutate(height = height*0.3048)
 
 ## Check counts
 check <- heights.munged %>% group_by(name.std, region) %>%

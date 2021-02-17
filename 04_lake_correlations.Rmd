@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 lake.summaries <- read_csv('data/in/lake_properties.csv') %>%
   distinct(name, region)
 
-volumes <- read_csv('data/out/volumes_fitted.csv') %>%
+volumes <- read_csv('data/out/volumes_fitted_LS30.csv') %>%
   left_join(lake.summaries)
 
 corrs <- function(lakeOne, lakeTwo){
@@ -72,12 +72,14 @@ lakeCombs <- combn(lakes.filtered$name, 2) %>%
 
 lakeCorrs <- map2_dfr(lakeCombs$V1,lakeCombs$V2, corrs) 
 
-lakeCorrs <- lakeCorrs %>% left_join(lakes.filtered %>% rename(lake1 = name))
+lakeCorrs <- lakeCorrs %>% left_join(lakes.filtered %>% rename(lake1 = name)) %>%
+  filter(lake1 !=  'Lake Washington', lake2 != 'Lake Washington') ## Turns out Lake Washington is hightly managed
+## So remove it
 
 lakeCorrs <- lakeCorrs %>%
   mutate(region = factor(region, levels = c('IL','NC','WA','WI')))
 
-ggplot(lakeCorrs, aes(x = region, y = rho)) + geom_boxplot() 
+ggplot(lakeCorrs %>% filter(matchups > 9), aes(x = region, y = rho)) + geom_boxplot() 
 
 dplyr::count(lakeCorrs %>% na.omit(), region)
 ```
@@ -89,7 +91,8 @@ dplyr::count(lakeCorrs %>% na.omit(), region)
 library(sf)
 lakes.sf <- st_read('data/in/Locss_Lakes.shp') %>%
   select(name = GNIS_NAME, area = AREASQKM) %>%
-  st_transform(crs = 5070)
+  st_transform(crs = 5070) %>%
+  filter(name != 'Lake Washington')
 
 ## Fix the names
 lakes.sf$name[lakes.sf$name == 'Lake Mattamuskeet E'] <- 'Lake Mattamuskeet East'
@@ -115,26 +118,65 @@ LakeDistances <- function(lake1, lake2){
 distances <- lakeCorrs %>%
   mutate(dist = map2_dbl(lake1,lake2, LakeDistances))
 
+distances  <- distances %>%
+  mutate(region = factor(region, levels = c('NC','IL','WA','WI')))
 
-ggplot(distances %>% na.omit(), aes(x = dist, y = rho)) +
+ggplot(distances %>% na.omit() %>% filter(matchups > 9), aes(x = dist, y = rho)) +
   geom_point(aes(size= matchups)) +
   geom_smooth(method = 'lm', se = F) +
   facet_wrap(~region, scales = 'free')
 
 
-ggplot(distances %>% na.omit(), aes(x = dist, y = rho)) +
+ggplot(distances %>% na.omit() %>% filter(matchups > 9), aes(x = dist, y = rho)) +
   geom_point(aes(size= matchups)) +
   geom_smooth(method = 'lm', se = F) +
   ggtitle('All Regions')
 
 
-lakeCombsFull <- combn(lake.summaries$name, 2) %>%
-  t() %>% as_tibble() %>% left_join(lake.summaries %>% rename(V1 = name)) %>%
-  left_join(lake.summaries %>% rename(V2 = name, region2 = region)) %>%
+write_csv(distances, 'data/out/DistCorrs_SB.csv')
+
+
+## Follow-up, lets just look at the ones that are highly correlated
+lake1 <- lakeCorrs %>%
+  rename(name = lake1) %>%
+  left_join(lakes.sf) %>%
+  st_as_sf()
+
+lake2 <-  lakeCorrs %>%
+  rename(name = lake2) %>%
+  left_join(lakes.sf) %>%
+  st_as_sf() 
+
+
+lines <- st_sfc(mapply(function(a,b){st_cast(st_union(a,b),"LINESTRING")}, lake1$geometry, lake2$geometry, SIMPLIFY=FALSE)) %>% st_set_crs(5070) %>% 
+  st_as_sf() %>%
+  mutate(corrID = row_number()) %>%
+  left_join(lakeCorrs %>% mutate(corrID = row_number()))
+
+lines %>% filter(!is.na(rho), 
+                 matchups > 9) %>%
+  mapview::mapview(., color = c('#ca0020','#f4a582','#f7f7f7','#92c5de','#0571b0'), zcol = 'rho')
+
+lakeCorrs$geometry <- lines
+
+
+mapview::mapview(lakeCorrs %>% filter(!is.na(rho)) %>% st_as_sf(), col.regions = c('#ca0020','#f4a582','#f7f7f7','#92c5de','#0571b0'), zcol = 'rho')  
+```
+
+## Compare to SBs
+
+```{r}
+sb_corr <- read_csv('NC_RC_volume_correlation_coefficients')
+names(sb_corr) <- c('lake1', 'lake2', 'rho', 'p', 'n')
+
+ids <- read_csv('data/in/lake_properties.csv')
+
+sb_corr <- sb_corr %>% left_join(ids %>% select(lake1 = gauge_id, region, name)) %>%
+  left_join(ids %>% select(lake2 = gauge_id, region2 = region)) %>%
   filter(region == region2) %>%
-  mutate()
+  mutate(rho = as.numeric(rho))
 
 
-
+ggplot(sb_corr, aes(x = region, y = rho)) + geom_boxplot() 
 ```
 

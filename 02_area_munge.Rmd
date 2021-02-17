@@ -14,6 +14,50 @@ library(lubridate)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+```{r}
+## Try to munge Sarina's data
+root <- 'data/in/areas_NCWAIL/'
+paths <- list.files('data/in/areas_NCWAIL', pattern = '.csv')
+areas <- map_dfr(paths, function(path) 
+  read_csv(paste0(root,path)) %>% mutate(gauge_id = strsplit(path, '.csv') %>% first())
+  )
+
+
+lakes <- read_csv('data/in/lake_properties.csv') %>% filter(!is.na(name))
+
+check <- areas %>% filter(!gauge_id %in% lakes$gauge_id) %>% select(gauge_id) %>% distinct()
+check$gauge_id %>% grep('2',.,value = T)
+
+## Missing these gauges in the lake properties csv, maybe france lakes? "LCW2" "LWL2" "PLN2" "WAN2" "WTN2"
+## WA is lake Waccamaw, WTN is white lake, LC is Lake Lawrence in WA, PLN2 is phelps, LWL 
+
+
+###### WEST LOON IS FUNKY MAKE sure to adjust for that in the gauge data. LWL2
+
+areasNCWAIL <- areas %>% inner_join(lakes %>% select(gauge_id, name, region)) %>% 
+  distinct() %>%
+  mutate(timestamp = mdy(timestamp)) %>%
+  select(-gauge_id)
+
+
+areasWisc <- areas %>%
+  filter(!gauge_id %in% lakes$gauge_id) %>%
+  rename(name = gauge_id) %>%
+  left_join(lakes %>% select(name, region)) %>% distinct() %>%
+  mutate(timestamp = mdy(timestamp))
+
+areasWisc$name[areasWisc$name == 'Deep Lake'] <- 'Deep Lake Wisc.'
+areasWisc$name[areasWisc$name == 'Phantom Lake'] <- 'Phantom Lake Wisc.'
+
+nrow(areasNCWAIL) + nrow(areasWisc)
+
+areas <- areasNCWAIL %>%
+  bind_rows(areasWisc) 
+
+```
+
+
 ## Bring in the remote sensing data from Earth Engine and Standardize the names
 
 ```{r}
@@ -25,7 +69,13 @@ areas <- read_csv('data/in/LakeAreas_CC30.csv') %>%
   mutate(timestamp = as.POSIXct(timestamp/1000, origin = ymd('1970-01-01')),
          sat = ifelse(grepl('_LC08_',image_id), 'Landsat', 'Sentinel'),
          refArea = round(refArea, 3)) %>%
-  filter(timestamp < '2020-02-09')
+  filter(timestamp < '2020-02-01',
+         Reconstructed >= 0.1)
+
+# areas <- areas %>% select(Reconstructed, ReconstructedAll, lakeMask, name, timestamp, refArea) %>%
+#   mutate(refArea = round(refArea, 3)) %>%
+#   filter(timestamp < '2020-02-09',
+#          Reconstructed >= 0.1)
 
 
 ## Make sure names match our standardized ones
@@ -72,7 +122,7 @@ areas <- areas %>% left_join(meds) %>%
   mutate(areaDif = abs(med - Reconstructed)/med) %>%
   filter(areaDif <= 0.25)
 
-write_csv(areas, 'data/out/areas_munged.csv')
+write_csv(areas, 'data/out/areas_munged_CC30.csv')
 ```
 
 ## Filter to compare Sentinel 2 obs to Landsat
