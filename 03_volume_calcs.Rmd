@@ -76,16 +76,14 @@ matchups <- sameday %>% mutate(matchup = 'same') %>%
   mutate(area_m = area*1000000)
 
 
-## This leaves us with only 77 lakes where there is at least 1 matchup
+## This leaves us with only 73 lakes where there is at least 1 matchup
 dplyr::count(matchups,name) %>% filter(n>2)
-## and 60 lakes with at least 3
-
+## and 68 lakes with at least 3
 ```
 
 ## Calculate volume changes
 
 ```{r}
-
 ## Simple volumetric change based on trapezoidal volume
 volChange <- function(lake){
 
@@ -122,7 +120,7 @@ volumes_fitted <- heights %>%
   unnest(cols = c(data, vol_fit))
 
 
-write_csv(volumes_fitted, 'data/out/volumes_fitted_LS30.csv')
+write_csv(volumes_fitted, 'data/out/volumes_fitted_CC30.csv')
 ```
 
 ## Join the the areas and look at some timeseries
@@ -147,90 +145,79 @@ volsLong %>% filter(name == lake,  date > '2017-04-01') %>%
   ggtitle(lake)
 
 
-```
+## Make them individually for correct lines
 
-## Compare to SB's volume outputs
-```{r}
-###
-ids <- read_csv('data/in/lake_properties.csv')
+p1 <- ggplot(heights %>% filter(name == lake), aes(x = date, y = height)) + geom_line(color = 'blue') +
+  labs(y = 'Level (m)', subtitle = 'a) Lake Level') +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.text.y = element_text(angle = 45, hjust = .5),
+        plot.subtitle = element_text(hjust = 0.5))
+  
+p2 <- ggplot(areas %>% filter(name == lake, date > '2017-04-18'), aes(x = date, y = area)) + geom_line(color = 'red') +
+  labs(y = expression(Surface~Area~(km^2)), subtitle = 'b) Lake Surface Area') +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.text.y = element_text(angle = 45, hjust = .5),
+        plot.subtitle = element_text(hjust = 0.5))
 
-volumes <- volumes %>% left_join(ids)
+p3 <- ggplot(volumes_fitted %>% filter(name == lake), aes(x = date, y = vol_fit)) + geom_line(color = 'black') +
+  labs(y = expression(Delta~Volume~(m^2)), subtitle = 'c) Change in Lake Volume') +
+  theme_classic() +
+  theme(axis.title.x = element_blank(),
+        axis.text.y = element_text(angle = 45, hjust = .5),
+        plot.subtitle = element_text(hjust = 0.5))
 
-root <- 'data/in/Vols_Sarina/'
+g <- gridExtra::grid.arrange(p1, p2,p3, ncol = 1)
 
-paths <- list.files('data/in/Vols_Sarina', pattern = '.csv')
-
-Vols_SB <- map_dfr(paths, function(path) 
-  read_csv(paste0(root,path)) %>% mutate(gauge_id = strsplit(path, '.csv') %>% first())
-  )
-
-id <- ids$gauge_id[9]
-
-p1 <- volumes %>%
-  filter(gauge_id == id) %>%
-  ggplot(aes(x = date, y = vol_change)) + geom_point() +
-  geom_line() + 
-  ggtitle("Simon")
-
-p2 <- Vols_SB %>%
-  filter(gauge_id == id) %>%
-  ggplot(aes(x = Date, y = ChangeInVolumem3)) + geom_point() +
-  geom_line() +
-  ggtitle('Sarina')
-
-print(paste0('Simon: ', nrow(volumes %>% filter(gauge_id == id)),' Sarina: ',nrow(Vols_SB %>% filter(gauge_id == id))))
-
-gridExtra::grid.arrange(p1,p2, nrow = 2)
-
-
-check <- Vols_SB %>%
-  filter(gauge_id == id)
+ggsave('figures/Salters3panel.png', plot = g, width = 5, height = 4, units = 'in', dpi = 600)
 
 ```
 
-
-
-## Compare to SB's rating curve outputs
-```{r}
-###
-ids <- read_csv('data/in/lake_properties.csv')
-
-volumes_fitted <- volumes_fitted %>% left_join(ids)
-
-root <- 'data/in/rc_out_SB/'
-
-paths <- list.files('data/in/rc_out_SB')
-
-Vols_SB <- map_dfr(paths, function(path) 
-  read_csv(paste0(root,path)) %>% mutate(gauge_id = strsplit(path, '_')[[1]][[1]] %>% first())
-  )
-
-id <- ids$gauge_id[11]
-
-p1 <- volumes_fitted %>%
-  filter(gauge_id == id) %>%
-  ggplot(aes(x = date, y = vol_fit)) + geom_point() +
-  geom_line() + 
-  ggtitle("Simon")
-
-p2 <- Vols_SB %>%
-  filter(gauge_id == id) %>%
-  ggplot(aes(x = Date, y = `^Volume(RC)`)) + geom_point() +
-  geom_line() +
-  ggtitle('Sarina')
-
-print(paste0('Simon: ', nrow(volumes_fitted %>% filter(gauge_id == id)),' Sarina: ',nrow(Vols_SB %>% filter(gauge_id == id))))
-
-gridExtra::grid.arrange(p1,p2, nrow = 2)
-
-
-```
-
+## Rating curve
 
 ```{r}
-hist(Vols_SB$Heightm[Vols_SB$gauge_id == 'SAN2'])
-hist(volumes$height[volumes$gauge_id == 'SAN2'])
+ggplot(volumes %>% filter(name == "Bay Tree Lake"), aes(x = height_diff, y = vol_change)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  ggpmisc::stat_poly_eq(formula = y~x, rr.digits = 3,coef.digits = 5, label.x = 'right', label.y = 'bottom',
+               aes(label = paste(..eq.label.., ..rr.label.., sep = "*plain(\",\")~")), 
+               parse = TRUE, color = 'red') +
+  labs(y = expression(Delta~Volume~(m^2)), x = expression(Delta~Height~(m))) +
+  theme_bw() +
+  theme(axis.text.y = element_text(angle = 45, hjust = .5))
 
+ggsave('figures/RatingCurve.png', width = 3.5, height = 3, units = 'in', dpi = 600)
 
 ```
+
+
+## Make the summary table
+```{r}
+
+satCounts <- areas %>%
+  filter(timestamp > '2015-01-01',timestamp < '2020-01-01') %>%
+  group_by(name) %>%
+  summarise(countAreas = n(),
+            mean = mean(Reconstructed))
+
+heightsCounts <- heights %>% group_by(name) %>%
+  summarise(countLevels = n(),
+            dateFirst = min(date),
+            dateLast = max(date))
+
+tabOut <- lake.summaries %>% select(name, region) %>%
+  left_join(heightsCounts) %>%
+  left_join(satCounts)
+
+## West Loon and East Loon are the same
+tabOut$countLevels[tabOut$name == 'West Loon Lake'] <- tabOut$countLevels[tabOut$name == 'East Loon Lake']
+tabOut$dateFirst[tabOut$name == 'West Loon Lake'] <- tabOut$dateFirst[tabOut$name == 'East Loon Lake']
+tabOut$dateLast[tabOut$name == 'West Loon Lake'] <- tabOut$dateLast[tabOut$name == 'East Loon Lake']
+
+write_csv(tabOut, 'data/out/SummaryTable.csv')
+
+```
+
+
 

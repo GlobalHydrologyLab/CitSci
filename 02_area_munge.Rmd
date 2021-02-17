@@ -14,50 +14,6 @@ library(lubridate)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-
-```{r}
-## Try to munge Sarina's data
-root <- 'data/in/areas_NCWAIL/'
-paths <- list.files('data/in/areas_NCWAIL', pattern = '.csv')
-areas <- map_dfr(paths, function(path) 
-  read_csv(paste0(root,path)) %>% mutate(gauge_id = strsplit(path, '.csv') %>% first())
-  )
-
-
-lakes <- read_csv('data/in/lake_properties.csv') %>% filter(!is.na(name))
-
-check <- areas %>% filter(!gauge_id %in% lakes$gauge_id) %>% select(gauge_id) %>% distinct()
-check$gauge_id %>% grep('2',.,value = T)
-
-## Missing these gauges in the lake properties csv, maybe france lakes? "LCW2" "LWL2" "PLN2" "WAN2" "WTN2"
-## WA is lake Waccamaw, WTN is white lake, LC is Lake Lawrence in WA, PLN2 is phelps, LWL 
-
-
-###### WEST LOON IS FUNKY MAKE sure to adjust for that in the gauge data. LWL2
-
-areasNCWAIL <- areas %>% inner_join(lakes %>% select(gauge_id, name, region)) %>% 
-  distinct() %>%
-  mutate(timestamp = mdy(timestamp)) %>%
-  select(-gauge_id)
-
-
-areasWisc <- areas %>%
-  filter(!gauge_id %in% lakes$gauge_id) %>%
-  rename(name = gauge_id) %>%
-  left_join(lakes %>% select(name, region)) %>% distinct() %>%
-  mutate(timestamp = mdy(timestamp))
-
-areasWisc$name[areasWisc$name == 'Deep Lake'] <- 'Deep Lake Wisc.'
-areasWisc$name[areasWisc$name == 'Phantom Lake'] <- 'Phantom Lake Wisc.'
-
-nrow(areasNCWAIL) + nrow(areasWisc)
-
-areas <- areasNCWAIL %>%
-  bind_rows(areasWisc) 
-
-```
-
-
 ## Bring in the remote sensing data from Earth Engine and Standardize the names
 
 ```{r}
@@ -69,8 +25,7 @@ areas <- read_csv('data/in/LakeAreas_CC30.csv') %>%
   mutate(timestamp = as.POSIXct(timestamp/1000, origin = ymd('1970-01-01')),
          sat = ifelse(grepl('_LC08_',image_id), 'Landsat', 'Sentinel'),
          refArea = round(refArea, 3)) %>%
-  filter(timestamp < '2020-02-01',
-         Reconstructed >= 0.1)
+  filter(timestamp < '2020-02-01')
 
 # areas <- areas %>% select(Reconstructed, ReconstructedAll, lakeMask, name, timestamp, refArea) %>%
 #   mutate(refArea = round(refArea, 3)) %>%
@@ -128,8 +83,6 @@ write_csv(areas, 'data/out/areas_munged_CC30.csv')
 ## Filter to compare Sentinel 2 obs to Landsat
 
 ```{r}
-ggplot(areas, aes(x = sat, fill = sat)) + geom_bar() + theme_bw()
-
 #Same day matchups
 matchups <- areas %>%
   select(name, area = Reconstructed, sat, timestamp) %>%
@@ -143,41 +96,9 @@ matchups <- areas %>%
 
 ggplot(matchups, aes(x = percDif)) + geom_density(fill = 'cyan',alpha = .2) + 
   scale_x_continuous(labels = scales::percent) +
-  labs(title = 'Same Day Matchups (n = 209)', x = 'Percent Difference (L-S/L)') +
+  labs(title = 'Same Day Matchups (n = 209)', x = 'Percent Difference in\nEstimated Area (L8-S2/L8)') +
   theme_bw()
 
-
-ggplot(matchups, aes(x = percDif)) + geom_histogram() + 
-  scale_x_continuous(labels = scales::percent) +
-  labs(title = 'Same Day Matchups (n = 209)', x = 'Percent Difference (Landsat-S2/Landsat)') +
-  theme_bw()
-
-ggplot(matchups, aes(x = diff)) + geom_histogram() + 
-  labs(title = 'Same Day Matchups (n = 209)', x = 'Absolute Difference (sq. km.)') +
-  theme_bw()
-
-Metrics::mape(matchups$Landsat, matchups$Sentinel)
-Metrics::percent_bias(matchups$Landsat, matchups$Sentinel)
-```
-
-```{r}
-matchups <- areas %>%
-  group_by(name, sat) %>%
-  summarise(count = n()) %>%
-  pivot_wider(names_from = 'sat', values_from = 'count') %>%
-  filter(Sentinel > 50)
-
-## there are 13 lakes with over 50 S2 obs
-matchups <- areas %>% filter(name %in% matchups$name) %>%
-  select(name, area = Reconstructed, sat, timestamp) %>%
-  mutate(date = as_date(timestamp)) %>%
-  select(-timestamp)
-
-ggplot(matchups, aes(x = area, color = sat)) + geom_freqpoly() +
-  facet_wrap(~name, scales = 'free')
-
-t.tests <- matchups %>%
-  group_by(name) %>%
-  summarise(t = t.test(area[sat == 'Landsat'], area[sat == 'Sentinel'])$p.value) 
+ggsave('figures/SameDayDiffDensDist.png', width = 3, height = 3, units = 'in', dpi = 600)
 
 ```

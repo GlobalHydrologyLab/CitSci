@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 lake.summaries <- read_csv('data/in/lake_properties.csv') %>%
   distinct(name, region)
 
-volumes <- read_csv('data/out/volumes_fitted_LS30.csv') %>%
+volumes <- read_csv('data/out/volumes_fitted_CC30.csv') %>%
   left_join(lake.summaries)
 
 corrs <- function(lakeOne, lakeTwo){
@@ -79,7 +79,16 @@ lakeCorrs <- lakeCorrs %>% left_join(lakes.filtered %>% rename(lake1 = name)) %>
 lakeCorrs <- lakeCorrs %>%
   mutate(region = factor(region, levels = c('IL','NC','WA','WI')))
 
-ggplot(lakeCorrs %>% filter(matchups > 9), aes(x = region, y = rho)) + geom_boxplot() 
+mean(lakeCorrs$rho[lakeCorrs$matchups > 9])
+
+ggplot(lakeCorrs %>% filter(matchups > 9), aes(x = region, y = rho, fill = region)) + 
+  geom_boxplot() +
+  scale_fill_brewer() +
+  labs(y = bquote(rho ~ 'of volumetric change in lake pairs'), x = 'Region', fill = 'Regions') +
+  theme_classic()
+  
+
+ggsave('figures/RegionalCorrs.png', width = 5, height = 3.5, units = 'in', dpi = 600)
 
 dplyr::count(lakeCorrs %>% na.omit(), region)
 ```
@@ -119,64 +128,89 @@ distances <- lakeCorrs %>%
   mutate(dist = map2_dbl(lake1,lake2, LakeDistances))
 
 distances  <- distances %>%
-  mutate(region = factor(region, levels = c('NC','IL','WA','WI')))
+  mutate(region = factor(region, levels = c('NC','IL','WA','WI'), labels = c('North Carolina', 'Illinois', 'Washington', 'Wisconsin')),
+         dist = dist/1e3)
 
-ggplot(distances %>% na.omit() %>% filter(matchups > 9), aes(x = dist, y = rho)) +
-  geom_point(aes(size= matchups)) +
+corrs <- distances %>% filter(matchups > 9) %>% group_by(region) %>%
+  nest() %>%
+  mutate(r = map_dbl(data, ~cor.test(.$rho, .$dist, method = 'spearman')$estimate),
+         p = map_dbl(data, ~cor.test(.$rho, .$dist,method = 'spearman')$p.value)) %>%
+  select(-data)
+
+
+p1 <- distances %>% filter(region == 'North Carolina', matchups > 9) %>% na.omit() %>%
+  ggplot(aes(x = dist, y = rho)) +
+  geom_point(aes(size = matchups)) +
   geom_smooth(method = 'lm', se = F) +
-  facet_wrap(~region, scales = 'free')
+  scale_size_area(breaks = c(25,50,100,150, 200), max_size = 2) +
+  labs(title = ~underline('North Carolina'), subtitle = expression(~rho~'= -0.02 P = 0.90'), tag = 'b)') +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = .5),
+        plot.subtitle = element_text(hjust = .5),
+        legend.position = 'none',
+        axis.title = element_blank())
 
-
-ggplot(distances %>% na.omit() %>% filter(matchups > 9), aes(x = dist, y = rho)) +
-  geom_point(aes(size= matchups)) +
+p2 <- distances %>% filter(region == 'Illinois', matchups > 9) %>% na.omit() %>%
+  ggplot(aes(x = dist, y = rho)) +
+  geom_point(aes(size = matchups)) +
   geom_smooth(method = 'lm', se = F) +
-  ggtitle('All Regions')
+  scale_size_area(breaks = c(25,50,100,150, 200), max_size = 2) +
+  labs(title = ~underline('Illinois'), subtitle = expression(~rho~'= -0.54 P = <0.01'), tag = 'c)') +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = .5),
+        plot.subtitle = element_text(hjust = .5),
+        legend.position = 'none',
+        axis.title = element_blank())
 
 
-write_csv(distances, 'data/out/DistCorrs_SB.csv')
+p3 <- distances %>% filter(region == 'Washington', matchups > 9) %>% na.omit() %>%
+  ggplot(aes(x = dist, y = rho)) +
+  geom_point(aes(size = matchups)) +
+  geom_smooth(method = 'lm', se = F) +
+  scale_size_area(breaks = c(25,50,100,150, 200), max_size = 2) +
+  labs(title = ~underline('Washington'), subtitle = expression(~rho~'= -0.37 P = <0.01'), tag = 'd)') +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = .5),
+        plot.subtitle = element_text(hjust = .5),
+        legend.position = 'none',
+        axis.title = element_blank())
 
 
-## Follow-up, lets just look at the ones that are highly correlated
-lake1 <- lakeCorrs %>%
-  rename(name = lake1) %>%
-  left_join(lakes.sf) %>%
-  st_as_sf()
+p4 <- distances %>% filter(region == 'Wisconsin', matchups > 9) %>% na.omit() %>%
+  ggplot(aes(x = dist, y = rho)) +
+  geom_point(aes(size = matchups)) +
+  geom_smooth(method = 'lm', se = F) +
+  scale_size_area(breaks = c(25,50,100,150, 200), max_size = 2) +
+  labs(title = ~underline('Wisconsin'), subtitle = expression(~rho~'= -0.19 P = 0.16'), tag = 'e)') +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = .5),
+        plot.subtitle = element_text(hjust = .5),
+        legend.position = 'none',
+        axis.title = element_blank())
 
-lake2 <-  lakeCorrs %>%
-  rename(name = lake2) %>%
-  left_join(lakes.sf) %>%
-  st_as_sf() 
+cor.test(distances$rho[distances$matchups > 9],distances$dist[distances$matchups > 9], method = 'spearman' )
 
+p5 <- distances %>% filter(matchups > 9) %>% na.omit() %>%
+  ggplot(aes(x = dist, y = rho)) +
+  geom_point(aes(size = matchups)) +
+  geom_smooth(method = 'lm', se = F) +
+  scale_size_area(breaks = c(25,50,100,150, 200), max_size = 2) +
+  labs(title = ~underline('All Regions'), subtitle = expression(~rho~'= -0.26 P = <0.01'), tag = 'a)',
+       size = 'Number of\nMeasurements') +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = .5),
+        plot.subtitle = element_text(hjust = .5),
+        legend.position = 'bottom',
+        legend.direction = 'vertical',
+        axis.title = element_blank())
 
-lines <- st_sfc(mapply(function(a,b){st_cast(st_union(a,b),"LINESTRING")}, lake1$geometry, lake2$geometry, SIMPLIFY=FALSE)) %>% st_set_crs(5070) %>% 
-  st_as_sf() %>%
-  mutate(corrID = row_number()) %>%
-  left_join(lakeCorrs %>% mutate(corrID = row_number()))
+layout <- rbind(c(1,2,3),
+                c(1,4,5))
 
-lines %>% filter(!is.na(rho), 
-                 matchups > 9) %>%
-  mapview::mapview(., color = c('#ca0020','#f4a582','#f7f7f7','#92c5de','#0571b0'), zcol = 'rho')
+g <- gridExtra::grid.arrange(p5,p1,p2,p3,p4, layout_matrix = layout, left = 'Correlation Coefficient (ρ)', bottom = 'Distance Between Lakes (km)', widths = c(.4,.3,.3))
 
-lakeCorrs$geometry <- lines
+ggsave('figures/DistCorrs.png', width = 8, height = 6, units = 'in', plot = g, dpi = 600)
 
+write_csv(distances, 'data/out/DistCorrs.csv')
 
-mapview::mapview(lakeCorrs %>% filter(!is.na(rho)) %>% st_as_sf(), col.regions = c('#ca0020','#f4a582','#f7f7f7','#92c5de','#0571b0'), zcol = 'rho')  
 ```
-
-## Compare to SBs
-
-```{r}
-sb_corr <- read_csv('NC_RC_volume_correlation_coefficients')
-names(sb_corr) <- c('lake1', 'lake2', 'rho', 'p', 'n')
-
-ids <- read_csv('data/in/lake_properties.csv')
-
-sb_corr <- sb_corr %>% left_join(ids %>% select(lake1 = gauge_id, region, name)) %>%
-  left_join(ids %>% select(lake2 = gauge_id, region2 = region)) %>%
-  filter(region == region2) %>%
-  mutate(rho = as.numeric(rho))
-
-
-ggplot(sb_corr, aes(x = region, y = rho)) + geom_boxplot() 
-```
-
