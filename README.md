@@ -1,3 +1,3 @@
 # CitizenScience
 
-Project studying local hydrology through remote sensing of lake surface areas and citizen based staff gauge measurements.  This code uses Google Earth Engine to  extract lake surface areas from Landsat and Sentinel 2 imagery.  Lake polygons are the only necessary inputs.  Cloud, shadow, and ice filters aren't 100 %, so it's good to go visually check resulting watermask and imagery if resulting areas seem unreasonable.
+Project studying local hydrology through remote sensing of lake surface areas and citizen based staff gauge measurements.  This code uses Google Earth Engine to  extract lake surface areas from Landsat and Sentinel 2 imagery.  These surface area measurements are then matched with gauge measurements from citizen scientists to calculate volumetric changes in lake storage.  Wisconsin gauge data comes from the Wisconsin Department of Natural Resources.
