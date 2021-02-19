@@ -96,7 +96,7 @@ matchups <- areas %>%
 
 ggplot(matchups, aes(x = percDif)) + geom_density(fill = 'cyan',alpha = .2) + 
   scale_x_continuous(labels = scales::percent) +
-  labs(title = 'Same Day Matchups (n = 209)', x = 'Percent Difference in\nEstimated Area (L8-S2/L8)') +
+  labs(title = 'Same Day Matchups (n = 209)', x = 'Percent Difference in\nEstimated Area (L8-S2)/L8') +
   theme_bw()
 
 ggsave('figures/SameDayDiffDensDist.png', width = 3, height = 3, units = 'in', dpi = 600)

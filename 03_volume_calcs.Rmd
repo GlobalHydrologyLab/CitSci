@@ -191,8 +191,8 @@ ggsave('figures/RatingCurve.png', width = 3.5, height = 3, units = 'in', dpi = 6
 
 ```
 
-
 ## Make the summary table
+
 ```{r}
 
 satCounts <- areas %>%
@@ -218,6 +218,3 @@ tabOut$dateLast[tabOut$name == 'West Loon Lake'] <- tabOut$dateLast[tabOut$name 
 write_csv(tabOut, 'data/out/SummaryTable.csv')
 
 ```
-
-
-
